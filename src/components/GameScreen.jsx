@@ -1,14 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AnatomyViewer from './AnatomyViewer';
 
 export default function GameScreen({ game, onExit, onFinish }) {
   const { state, current, completed, total, answer, reveal, markFlashcard, skip, next } = game;
   const [input, setInput] = useState('');
+  const [answerError, setAnswerError] = useState('');
+  const [hintCount, setHintCount] = useState(0);
+  const ignoreNextEnter = useRef(false);
   const promptNoun = state.promptNoun || 'osso';
+  const displayName = promptNoun === 'músculo' ? current?.nome.replace(/^m\.\s*/i, '') : current?.nome;
   const answered = Boolean(state.feedback);
   const last = state.currentIndex >= total - 1;
 
-  useEffect(() => setInput(''), [current]);
+  useEffect(() => {
+    setInput('');
+    setAnswerError('');
+    setHintCount(0);
+  }, [current]);
 
   const advance = () => {
     if (last) onFinish();
@@ -19,6 +27,10 @@ export default function GameScreen({ game, onExit, onFinish }) {
     if (!answered) return undefined;
     const handleKeyDown = (event) => {
       if (event.key !== 'Enter') return;
+      if (ignoreNextEnter.current) {
+        ignoreNextEnter.current = false;
+        return;
+      }
       event.preventDefault();
       advance();
     };
@@ -30,7 +42,25 @@ export default function GameScreen({ game, onExit, onFinish }) {
 
   const submit = (event) => {
     event.preventDefault();
-    if (input.trim()) answer(input);
+    if (!input.trim()) {
+      ignoreNextEnter.current = false;
+      setAnswerError('Digite uma resposta antes de continuar.');
+      return;
+    }
+    setAnswerError('');
+    answer(input);
+  };
+
+  const handleInputKeyDown = (event) => {
+    if (event.key === 'Enter' && input.trim()) ignoreNextEnter.current = true;
+  };
+
+  const giveHint = () => {
+    if (answered || !displayName || hintCount >= displayName.length) return;
+    const nextCount = hintCount + 1;
+    setInput(displayName.slice(0, nextCount));
+    setHintCount(nextCount);
+    setAnswerError('');
   };
 
   return (
@@ -49,18 +79,20 @@ export default function GameScreen({ game, onExit, onFinish }) {
           {state.mode === 'write' ? (
             <form onSubmit={submit} className="answer-form">
               <label htmlFor="answer">Sua resposta</label>
-              <input id="answer" autoComplete="off" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Digite o nome da estrutura" disabled={answered} autoFocus={!answered} />
-              {state.feedback && <div className={`feedback ${state.feedback.type}`}><span>{state.feedback.type === 'correct' ? '✓' : '×'}</span><div><strong>{state.feedback.type === 'correct' ? 'Correto!' : 'Resposta incorreta'}</strong>{state.feedback.type === 'incorrect' && <small>Resposta: {current.nome}</small>}</div></div>}
+              <input id="answer" autoComplete="off" value={input} onChange={(event) => { setInput(event.target.value); setAnswerError(''); }} onKeyDown={handleInputKeyDown} placeholder="Digite o nome da estrutura" disabled={answered} autoFocus={!answered} aria-invalid={Boolean(answerError)} aria-describedby={answerError ? 'answer-error' : undefined} />
+              {answerError && <small id="answer-error" className="answer-error" role="alert">{answerError}</small>}
+              {state.feedback && <div className={`feedback ${state.feedback.type}`}><span>{state.feedback.type === 'correct' ? '✓' : '×'}</span><div><strong>{state.feedback.type === 'correct' ? 'Correto!' : 'Resposta incorreta'}</strong>{state.feedback.type === 'incorrect' && <small>Resposta: {displayName}</small>}</div></div>}
               <div className="button-row">
-                {answered ? <button type="button" className="primary-button" onClick={advance}>{last ? 'Ver resultado' : 'Próxima estrutura'} <span>→</span></button> : <button className="primary-button" disabled={!input.trim()}>Responder <span>↗</span></button>}
+                {answered ? <button type="button" className="primary-button" onClick={advance}>{last ? 'Ver resultado' : 'Próxima estrutura'} <span>→</span></button> : <button className="primary-button" type="submit">Responder <span>↗</span></button>}
                 {!answered && state.allowSkip && <button type="button" className="text-button" onClick={skip}>Passar <span>↗</span></button>}
+                {!answered && <button type="button" className="text-button hint-button" onClick={giveHint} disabled={hintCount >= (displayName?.length || 0)}>Dica <span>✦</span></button>}
                 {!answered && <button type="button" className="text-button muted" onClick={() => { reveal(); answer(''); }}>Não sei</button>}
               </div>
             </form>
           ) : (
             <div className="flashcard-actions">
               {!state.revealed && <button className="reveal-button" onClick={reveal}>Mostrar resposta <span>↗</span></button>}
-              {state.revealed && <div className="flashcard-answer"><span>Resposta</span><strong>{current.nome}</strong></div>}
+              {state.revealed && <div className="flashcard-answer"><span>Resposta</span><strong>{displayName}</strong></div>}
               <div className="button-row">
                 {state.revealed ? <><button className="primary-button" onClick={() => markFlashcard(true)}>Eu sabia <span>→</span></button><button className="text-button" onClick={() => markFlashcard(false)}>Ainda não <span>↗</span></button></> : state.allowSkip && <button type="button" className="text-button" onClick={skip}>Passar <span>↗</span></button>}
               </div>
