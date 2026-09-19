@@ -147,7 +147,7 @@ function zoomCamera(camera, controls, direction) {
   controls.update();
 }
 
-export default function AnatomyViewer({ structure }) {
+export default function AnatomyViewer({ structure, modelFile = structure?.modelFile || 'skeleton.glb' }) {
   const mountRef = useRef(null);
   const modelRef = useRef(null);
   const cameraRef = useRef(null);
@@ -214,7 +214,7 @@ export default function AnatomyViewer({ structure }) {
     animate();
 
     const loader = new GLTFLoader();
-    loader.load(`${import.meta.env.BASE_URL}models/z-anatomy/anatomy.glb`, (gltf) => {
+    loader.load(`${import.meta.env.BASE_URL}models/z-anatomy/${modelFile}`, (gltf) => {
       hideModelLabels(gltf.scene);
       modelRef.current = { root: gltf.scene, fallback: false };
       scene.add(gltf.scene);
