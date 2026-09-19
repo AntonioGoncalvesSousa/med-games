@@ -7,8 +7,9 @@ export function shuffle(items) {
   return result;
 }
 
-export function createQueue(structures) {
-  return structures.map((structure) => ({ structure, status: 'pending' }));
+export function createQueue(structures, randomOrder = true) {
+  const orderedStructures = randomOrder ? shuffle(structures) : structures;
+  return orderedStructures.map((structure) => ({ structure, status: 'pending' }));
 }
 
 export function getScorePercentage(correct, total) {

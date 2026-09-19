@@ -20,7 +20,7 @@ function reducer(state, action) {
   const current = state.queue[state.currentIndex];
   switch (action.type) {
     case 'START':
-      return { ...initialState, ...action.settings, queue: createQueue(action.structures), started: true };
+      return { ...initialState, ...action.settings, queue: createQueue(action.structures, action.settings.randomOrder), started: true };
     case 'ANSWER': {
       if (!current || state.feedback) return state;
       const isCorrect = answerMatches(action.answer, current.structure);
