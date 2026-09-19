@@ -56,11 +56,7 @@ function hideModelLabels(root) {
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     const isTextOnly = materials.length > 0 && materials.every((material) => material.name === 'Text');
     if (isTextOnly) {
-      object.geometry = object.geometry.clone();
-      object.geometry.setDrawRange(0, 0);
       object.userData.isModelLabel = true;
-      hiddenLabels += 1;
-      return;
     }
     const hiddenMaterials = materials.map((material) => {
       if (material.name !== 'Text') return material;
@@ -116,8 +112,10 @@ function applyHighlight(model, structure, controls, camera) {
   const center = bounds.getCenter(new THREE.Vector3());
   const size = bounds.getSize(new THREE.Vector3());
   const radius = Math.max(size.x, size.y, size.z, 0.5);
+  const viewportRatio = camera.aspect || 1;
+  const fitFactor = viewportRatio < 0.8 ? 2.9 : 2.1;
   controls.target.copy(center);
-  camera.position.set(center.x + radius * 2.1, center.y + radius * 0.7, center.z + radius * 2.1);
+  camera.position.set(center.x + radius * fitFactor, center.y + radius * 0.7, center.z + radius * fitFactor);
   camera.near = Math.max(radius / 100, 0.01);
   camera.far = Math.max(radius * 30, 100);
   camera.updateProjectionMatrix();
@@ -131,8 +129,10 @@ function centerStructure(model, structure, controls, camera) {
   const center = bounds.getCenter(new THREE.Vector3());
   const size = bounds.getSize(new THREE.Vector3());
   const radius = Math.max(size.x, size.y, size.z, 0.5);
+  const viewportRatio = camera.aspect || 1;
+  const fitFactor = viewportRatio < 0.8 ? 2.9 : 2.1;
   controls.target.copy(center);
-  camera.position.set(center.x + radius * 2.1, center.y + radius * 0.7, center.z + radius * 2.1);
+  camera.position.set(center.x + radius * fitFactor, center.y + radius * 0.7, center.z + radius * fitFactor);
   camera.near = Math.max(radius / 100, 0.01);
   camera.far = Math.max(radius * 30, 100);
   camera.updateProjectionMatrix();
@@ -153,6 +153,7 @@ export default function AnatomyViewer({ structure }) {
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   const [modelState, setModelState] = useState('loading');
+  const [loadProgress, setLoadProgress] = useState(0);
 
   const recenter = () => {
     const model = modelRef.current;
@@ -168,12 +169,12 @@ export default function AnatomyViewer({ structure }) {
     camera.position.set(0, 0.3, 8.4);
     let renderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer = new THREE.WebGLRenderer({ antialias: window.innerWidth > 700, alpha: true });
     } catch {
       setModelState('unavailable');
       return () => {};
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 700 ? 1.5 : 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
@@ -217,10 +218,14 @@ export default function AnatomyViewer({ structure }) {
       hideModelLabels(gltf.scene);
       modelRef.current = { root: gltf.scene, fallback: false };
       scene.add(gltf.scene);
+      setLoadProgress(100);
       setModelState('ready');
-    }, undefined, () => {
+    }, (progress) => {
+      if (progress.total) setLoadProgress(Math.round((progress.loaded / progress.total) * 100));
+    }, () => {
+      setLoadProgress(0);
       modelRef.current = createFallbackModel(scene);
-      setModelState('fallback');
+      setModelState('error');
     });
 
     return () => {
@@ -252,10 +257,11 @@ export default function AnatomyViewer({ structure }) {
   return (
     <div className="viewer-shell">
       <div ref={mountRef} className="anatomy-canvas" aria-label="Visualizador 3D anatômico" />
-      <div className="viewer-badge"><span className="live-dot" /> {modelState === 'ready' ? 'Modelo Z-Anatomy' : modelState === 'fallback' ? 'Pré-visualização 3D' : modelState === 'unavailable' ? 'WebGL indisponível' : 'Carregando modelo'}</div>
+      <div className="viewer-badge"><span className="live-dot" /> {modelState === 'ready' ? 'Modelo Z-Anatomy' : modelState === 'fallback' ? 'Pré-visualização 3D' : modelState === 'error' ? 'Falha ao carregar modelo' : modelState === 'unavailable' ? 'WebGL indisponível' : `Carregando modelo${loadProgress ? ` · ${loadProgress}%` : ''}`}</div>
       {modelState === 'ready' && <div className="highlight-badge"><span /> estrutura em destaque</div>}
       {modelState === 'ready' && <div className="viewer-controls"><button className="zoom-button" onClick={() => zoomCamera(cameraRef.current, controlsRef.current, -1)} type="button" aria-label="Aproximar modelo">+</button><button className="zoom-button" onClick={() => zoomCamera(cameraRef.current, controlsRef.current, 1)} type="button" aria-label="Afastar modelo">−</button><button className="recenter-button" onClick={recenter} type="button"><span>⌖</span> Centralizar osso</button></div>}
-      {modelState === 'fallback' && <div className="viewer-note">Adicione o arquivo <strong>anatomy.glb</strong> em public/models/z-anatomy para ativar o modelo oficial.</div>}
+      {modelState === 'loading' && <div className="viewer-note loading-note">O modelo 3D está carregando{loadProgress ? ` · ${loadProgress}%` : ''}.</div>}
+      {modelState === 'error' && <div className="viewer-note">Não foi possível carregar o modelo 3D. Verifique sua conexão e recarregue a página.</div>}
       {modelState === 'unavailable' && <div className="viewer-note">Este navegador não disponibilizou WebGL para esta sessão. Abra a aplicação em um navegador com aceleração 3D ativa.</div>}
       <div className="viewer-hint">Arraste para girar · Scroll para aproximar</div>
     </div>
