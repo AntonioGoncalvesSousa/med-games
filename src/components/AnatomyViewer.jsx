@@ -24,11 +24,16 @@ function createFallbackModel(scene) {
   return { root: group, fallback: true };
 }
 
+function normalizeModelName(name = '') {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function findStructure(model, meshNames = []) {
   const matches = new Set();
   if (!model || !meshNames.length) return matches;
+  const normalizedNames = new Set(meshNames.map(normalizeModelName));
   model.traverse((object) => {
-    if (!meshNames.includes(object.name)) return;
+    if (!normalizedNames.has(normalizeModelName(object.name))) return;
     if (object.isMesh && !object.userData.isModelLabel) matches.add(object);
     object.traverse((child) => {
       if (child.isMesh && !child.userData.isModelLabel) matches.add(child);
@@ -72,6 +77,38 @@ function hideModelLabels(root) {
   return hiddenLabels;
 }
 
+const muscleMaterials = new Set([
+  'Internal rotator',
+  'External rotation',
+  'Flexion',
+  'Extension',
+  'Orbicularis/Constrictor',
+  'Depressor',
+  'Levator',
+  'Phonation',
+  'Ingestion',
+  'Abductor',
+  'Biarticular',
+  'Masticator',
+  'Adductor',
+  'Superficial',
+  'Extensor extremities',
+  'Extension hand/foot',
+  'Flexion hand/foot',
+  'Flexion fingers',
+  'Trapezius',
+  'Diaphragm',
+]);
+
+function hideNonMuscleMeshes(root) {
+  root.traverse((object) => {
+    if (!object.isMesh || object.userData.isModelLabel) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    const hasMuscleMaterial = materials.some((material) => muscleMaterials.has(material.name));
+    if (!hasMuscleMaterial) object.visible = false;
+  });
+}
+
 function applyHighlight(model, structure, controls, camera) {
   clearHighlights(model.root);
   const highlightedMeshes = findStructure(model.root, structure?.meshNames);
@@ -94,8 +131,8 @@ function applyHighlight(model, structure, controls, camera) {
       material.color?.set(highlighted ? 0xe66c4b : model.fallback ? 0xd7d2c7 : 0x9a9183);
       material.emissive?.set(highlighted ? 0x7d2413 : 0x000000);
       if ('emissiveIntensity' in material) material.emissiveIntensity = highlighted ? 0.85 : 0;
-      material.transparent = !highlighted;
-      material.opacity = highlighted ? 1 : 0.3;
+      material.transparent = false;
+      material.opacity = 1;
       return material;
     });
     object.material = Array.isArray(object.material) ? materials : materials[0];
@@ -216,6 +253,7 @@ export default function AnatomyViewer({ structure, modelFile = structure?.modelF
     const loader = new GLTFLoader();
     loader.load(`${import.meta.env.BASE_URL}models/z-anatomy/${modelFile}`, (gltf) => {
       hideModelLabels(gltf.scene);
+      if (modelFile === 'muscles.glb') hideNonMuscleMeshes(gltf.scene);
       modelRef.current = { root: gltf.scene, fallback: false };
       scene.add(gltf.scene);
       setLoadProgress(100);
