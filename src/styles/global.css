@@ -58,6 +58,8 @@ h1 em, h2 em { font-family: 'Playfair Display', serif; font-weight: 600; letter-
 .hint-button:disabled { cursor: default; opacity: .4; }
 .highlight-badge span { width: 7px; height: 7px; border-radius: 50%; background: #ffc857; box-shadow: 0 0 12px #ffc857; }
 .viewer-controls { position: absolute; z-index: 3; left: 20px; bottom: 38px; display: flex; align-items: center; gap: 6px; }
+.transparency-button { min-height: 31px; padding: 0 10px; background: rgba(231, 239, 246, .94); color: #102235; font: 700 9px 'DM Mono', monospace; letter-spacing: .04em; cursor: pointer; transition: background .2s, color .2s; }
+.transparency-button:hover, .transparency-button.active { background: #ffc857; color: #102235; }
 .zoom-button { display: grid; place-items: center; width: 31px; height: 31px; padding: 0; background: rgba(231, 239, 246, .94); color: #102235; font: 500 21px/1 'Manrope', sans-serif; transition: background .2s, transform .2s; pointer-events: auto; }
 .zoom-button:hover { background: white; transform: translateY(-2px); }
 .recenter-button { position: relative; left: auto; bottom: auto; display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; background: rgba(231, 239, 246, .94); color: #102235; font: 700 10px 'DM Mono', monospace; letter-spacing: .04em; text-transform: uppercase; transition: background .2s, transform .2s; pointer-events: auto; }
