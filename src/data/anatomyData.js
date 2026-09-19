@@ -1,0 +1,37 @@
+export const regions = [
+  { id: 'cabeca', label: 'Cabeça', shortLabel: 'cabeça' },
+  { id: 'torax', label: 'Coluna e tórax', shortLabel: 'coluna e tórax' },
+  { id: 'membros-superiores', label: 'Membros superiores', shortLabel: 'membros superiores' },
+  { id: 'pelve', label: 'Pelve', shortLabel: 'pelve' },
+  { id: 'membros-inferiores', label: 'Membros inferiores', shortLabel: 'membros inferiores' },
+];
+
+// Os identificadores foram conferidos diretamente no anatomy.glb usado pelo projeto.
+export const anatomyStructures = [
+  { id: 'cranio', nome: 'Crânio', categoria: 'ossos', regiao: 'cabeca', aliases: ['cranio'], meshNames: ['Craniumg_2'] },
+  { id: 'mandibula', nome: 'Mandíbula', categoria: 'ossos', regiao: 'cabeca', aliases: ['mandibula'], meshNames: ['Mandible_2'] },
+  { id: 'maxila', nome: 'Maxila', categoria: 'ossos', regiao: 'cabeca', aliases: ['maxilar', 'maxila'], meshNames: ['Maxillal_2', 'Maxillar_2'] },
+  { id: 'osso-hioide', nome: 'Osso hióide', categoria: 'ossos', regiao: 'cabeca', aliases: ['hioide', 'osso hioide'], meshNames: ['Hyoid_bone_2'] },
+  { id: 'vertebras-cervicais', nome: 'Vértebras cervicais', categoria: 'ossos', regiao: 'torax', aliases: ['vertebras cervicais', 'cervicais'], meshNames: ['Cervical_vertebraeg_2'] },
+  { id: 'vertebras-toracicas', nome: 'Vértebras torácicas', categoria: 'ossos', regiao: 'torax', aliases: ['vertebras toracicas', 'toracicas'], meshNames: ['Thoracic_vertebraeg_2'] },
+  { id: 'costelas-verdadeiras', nome: 'Costelas verdadeiras', categoria: 'ossos', regiao: 'torax', aliases: ['costelas verdadeiras'], meshNames: ['True_ribsg_2'] },
+  { id: 'costelas-falsas', nome: 'Costelas falsas', categoria: 'ossos', regiao: 'torax', aliases: ['costelas falsas'], meshNames: ['False_ribsg_2'] },
+  { id: 'esterno', nome: 'Esterno', categoria: 'ossos', regiao: 'torax', aliases: ['esterno'], meshNames: ['Sternumg_2', 'Sternumt_2'] },
+  { id: 'vertebras-lombares', nome: 'Vértebras lombares', categoria: 'ossos', regiao: 'torax', aliases: ['vertebras lombares', 'lombares'], meshNames: ['Lumbar_vertebraeg_2'] },
+  { id: 'sacro', nome: 'Sacro', categoria: 'ossos', regiao: 'pelve', aliases: ['sacro'], meshNames: ['Sacrum_2', 'Sacrumt_2'] },
+  { id: 'coccix', nome: 'Cóccix', categoria: 'ossos', regiao: 'pelve', aliases: ['coccix', 'coccis'], meshNames: ['Coccyx_2', 'Coccyxt_2'] },
+  { id: 'osso-do-quadril', nome: 'Osso do quadril', categoria: 'ossos', regiao: 'pelve', aliases: ['quadril', 'osso do quadril'], meshNames: ['Hip_bonel_2', 'Hip_boner_2'] },
+  { id: 'clavicula', nome: 'Clavícula', categoria: 'ossos', regiao: 'membros-superiores', aliases: ['clavicula'], meshNames: ['Clavicle', 'Clavicle_1'] },
+  { id: 'escapula', nome: 'Escápula', categoria: 'ossos', regiao: 'membros-superiores', aliases: ['escapula'], meshNames: ['Scapulal_2', 'Scapular_2'] },
+  { id: 'umero', nome: 'Úmero', categoria: 'ossos', regiao: 'membros-superiores', aliases: ['umero'], meshNames: ['Humerusl_2', 'Humerusr_2'] },
+  { id: 'radio', nome: 'Rádio', categoria: 'ossos', regiao: 'membros-superiores', aliases: ['radio'], meshNames: ['Radiusl_2', 'Radiusr_2'] },
+  { id: 'ulna', nome: 'Ulna', categoria: 'ossos', regiao: 'membros-superiores', aliases: [], meshNames: ['Ulnal_2', 'Ulnar_2'] },
+  { id: 'ossos-do-carpo', nome: 'Ossos do carpo', categoria: 'ossos', regiao: 'membros-superiores', aliases: ['carpo', 'ossos do carpo'], meshNames: ['Scaphoid_bone', 'Scaphoid_bone_1', 'Trapezium_bone', 'Trapezium_bone_1', 'Trapezoid_bone', 'Trapezoid_bone_1', 'Capitate_bone', 'Capitate_bone_1', 'Hamate_bone', 'Hamate_bone_1', 'Lunate_bone', 'Lunate_bone_1', 'Pisiform_bone', 'Pisiform_bone_1'] },
+  { id: 'femur', nome: 'Fêmur', categoria: 'ossos', regiao: 'membros-inferiores', aliases: ['femur'], meshNames: ['Femurl_2', 'Femurr_2'] },
+  { id: 'patela', nome: 'Patela', categoria: 'ossos', regiao: 'membros-inferiores', aliases: ['patela'], meshNames: ['Patellal_2', 'Patellar_2'] },
+  { id: 'tibia', nome: 'Tíbia', categoria: 'ossos', regiao: 'membros-inferiores', aliases: ['tibia'], meshNames: ['Tibial_2', 'Tibiar_2'] },
+  { id: 'fibula', nome: 'Fíbula', categoria: 'ossos', regiao: 'membros-inferiores', aliases: ['fibula'], meshNames: ['Fibulal_2', 'Fibular_2'] },
+  { id: 'ossos-do-tarso', nome: 'Ossos do tarso', categoria: 'ossos', regiao: 'membros-inferiores', aliases: ['tarso', 'ossos do tarso'], meshNames: ['Tarsal_bonesg_2'] },
+  { id: 'ossos-do-metatarso', nome: 'Ossos do metatarso', categoria: 'ossos', regiao: 'membros-inferiores', aliases: ['metatarso', 'ossos do metatarso', 'metatarsos'], meshNames: ['Metatarsal_bonesg_2'] },
+  { id: 'falanges-do-pe', nome: 'Falanges do pé', categoria: 'ossos', regiao: 'membros-inferiores', aliases: ['falanges do pe', 'falanges do pé'], meshNames: ['Phalanges_of_footg_2'] },
+];
