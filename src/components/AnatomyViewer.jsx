@@ -213,7 +213,7 @@ export default function AnatomyViewer({ structure }) {
     animate();
 
     const loader = new GLTFLoader();
-    loader.load('/models/z-anatomy/anatomy.glb', (gltf) => {
+    loader.load(`${import.meta.env.BASE_URL}models/z-anatomy/anatomy.glb`, (gltf) => {
       hideModelLabels(gltf.scene);
       modelRef.current = { root: gltf.scene, fallback: false };
       scene.add(gltf.scene);
