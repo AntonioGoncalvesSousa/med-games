@@ -62,6 +62,7 @@ function reducer(state, action) {
       return { ...state, queue: moved, currentIndex: state.currentIndex >= moved.length ? 0 : state.currentIndex, skipped: state.skipped + 1, history: [...state.history, { structure: current.structure, result: 'skipped' }] };
     }
     case 'NEXT':
+      if (!state.feedback) return state;
       if (state.currentIndex >= state.queue.length - 1) return { ...state, started: false };
       return { ...state, currentIndex: state.currentIndex + 1, feedback: null, revealed: false };
     case 'RESTART':

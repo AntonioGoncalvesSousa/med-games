@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import AnatomyViewer from './AnatomyViewer';
 
 export default function GameScreen({ game, onExit, onFinish }) {
@@ -6,7 +6,6 @@ export default function GameScreen({ game, onExit, onFinish }) {
   const [input, setInput] = useState('');
   const [answerError, setAnswerError] = useState('');
   const [hintCount, setHintCount] = useState(0);
-  const ignoreNextEnter = useRef(false);
   const promptNoun = state.promptNoun || 'osso';
   const displayName = promptNoun === 'músculo' ? current?.nome.replace(/^m\.\s*/i, '') : current?.nome;
   const answered = Boolean(state.feedback);
@@ -27,10 +26,6 @@ export default function GameScreen({ game, onExit, onFinish }) {
     if (!answered) return undefined;
     const handleKeyDown = (event) => {
       if (event.key !== 'Enter') return;
-      if (ignoreNextEnter.current) {
-        ignoreNextEnter.current = false;
-        return;
-      }
       event.preventDefault();
       advance();
     };
@@ -43,16 +38,11 @@ export default function GameScreen({ game, onExit, onFinish }) {
   const submit = (event) => {
     event.preventDefault();
     if (!input.trim()) {
-      ignoreNextEnter.current = false;
       setAnswerError('Digite uma resposta antes de continuar.');
       return;
     }
     setAnswerError('');
     answer(input);
-  };
-
-  const handleInputKeyDown = (event) => {
-    if (event.key === 'Enter' && input.trim()) ignoreNextEnter.current = true;
   };
 
   const giveHint = () => {
@@ -79,7 +69,7 @@ export default function GameScreen({ game, onExit, onFinish }) {
           {state.mode === 'write' ? (
             <form onSubmit={submit} className="answer-form">
               <label htmlFor="answer">Sua resposta</label>
-              <input id="answer" autoComplete="off" value={input} onChange={(event) => { setInput(event.target.value); setAnswerError(''); }} onKeyDown={handleInputKeyDown} placeholder="Digite o nome da estrutura" disabled={answered} autoFocus={!answered} aria-invalid={Boolean(answerError)} aria-describedby={answerError ? 'answer-error' : undefined} />
+              <input id="answer" autoComplete="off" value={input} onChange={(event) => { setInput(event.target.value); setAnswerError(''); }} placeholder="Digite o nome da estrutura" disabled={answered} autoFocus={!answered} aria-invalid={Boolean(answerError)} aria-describedby={answerError ? 'answer-error' : undefined} />
               {answerError && <small id="answer-error" className="answer-error" role="alert">{answerError}</small>}
               {state.feedback && <div className={`feedback ${state.feedback.type}`}><span>{state.feedback.type === 'correct' ? '✓' : '×'}</span><div><strong>{state.feedback.type === 'correct' ? 'Correto!' : 'Resposta incorreta'}</strong>{state.feedback.type === 'incorrect' && <small>Resposta: {displayName}</small>}</div></div>}
               <div className="button-row">
