@@ -6,6 +6,9 @@ import frenuloImage from '../styles/assets/questionario boca e faringe pt.1/1 CA
 import raizCorpoApiceImage from '../styles/assets/questionario boca e faringe pt.1/2 Lingua/raiz corpo apice .png';
 import sulcoForameImage from '../styles/assets/questionario boca e faringe pt.1/2 Lingua/sulco forame.png';
 import papilasImage from '../styles/assets/questionario boca e faringe pt.1/2 Lingua/papilas.png';
+import nasoOroLaringoImage from '../styles/assets/questionario boca e faringe pt.1/3 faringe divisoes/naso oro laringo.png';
+import tonsilasImage from '../styles/assets/questionario boca e faringe pt.1/3 faringe divisoes/tonsilas.jpeg';
+import musculosFaringeImage from '../styles/assets/questionario boca e faringe pt.1/faringe musculo/musculos faringe.png';
 
 export const bocaFaringeQuestions = [
   {
@@ -146,6 +149,100 @@ export const bocaFaringeQuestions = [
         label: 'Estrutura 4',
         answer: 'papilas fungiformes',
         description: 'Papilas em forma de cogumelo, distribuídas principalmente na porção anterior da língua.',
+      },
+    ],
+  },
+  {
+    id: 'divisoes-da-faringe',
+    type: 'multiple',
+    image: nasoOroLaringoImage,
+    question: 'Qual é esta estrutura?',
+    answers: [
+      {
+        label: 'Estrutura 1',
+        answer: 'nasofaringe',
+        description: 'Porção superior da faringe, localizada atrás das cavidades nasais.',
+      },
+      {
+        label: 'Estrutura 2',
+        answer: 'orofaringe',
+        description: 'Parte média da faringe, situada atrás da cavidade oral.',
+      },
+      {
+        label: 'Estrutura 3',
+        answer: 'laringofaringe',
+        description: 'Porção inferior da faringe, que continua até a laringe e ao esôfago.',
+      },
+    ],
+  },
+  {
+    id: 'tonsilas-faringeas',
+    type: 'multiple',
+    image: tonsilasImage,
+    question: 'Qual é esta estrutura?',
+    answers: [
+      {
+        label: 'Estrutura 1',
+        answer: 'tonsila palatina',
+        description: 'Tonsila amígdalas laterais da orofaringe, visíveis na região amigdalar.',
+      },
+      {
+        label: 'Estrutura 2',
+        answer: 'ostio faringeo da tuba auditiva',
+        description: 'Abertura da tuba auditiva na parede da nasofaringe.',
+      },
+      {
+        label: 'Estrutura 3',
+        answer: 'tonsila tubaria',
+        description: 'Tonsilas localizadas ao redor da abertura da tuba auditiva.',
+      },
+      {
+        label: 'Estrutura 4',
+        answer: 'tonsila palatina',
+        description: 'Tonsila palatina, frequentemente destacada na amígdala orofaríngea.',
+      },
+      {
+        label: 'Estrutura 5',
+        answer: 'tonsila lingual',
+        description: 'Tonsila localizada na base da língua, na região posterior da cavidade oral.',
+      },
+    ],
+  },
+  {
+    id: 'musculos-da-faringe',
+    type: 'multiple',
+    image: musculosFaringeImage,
+    question: 'Qual é esta estrutura?',
+    answers: [
+      {
+        label: 'Estrutura 1',
+        answer: 'estilofaringeo',
+        description: 'Músculo que eleva a faringe durante a deglutição.',
+      },
+      {
+        label: 'Estrutura 2',
+        answer: 'constritor superior da faringe',
+        description: 'Músculo constritor que fecha a parte superior da faringe.',
+      },
+      {
+        label: 'Estrutura 3',
+        answer: 'salpingofaringeo',
+        description: 'Músculo que eleva a faringe e abre a tuba auditiva.',
+      },
+      {
+        label: 'Estrutura 4',
+        answer: 'palatofaringeo',
+        description: 'Músculo que eleva a faringe durante a deglutição.',
+      },
+      {
+        label: 'Estrutura 5',
+        answer: 'constritor medio da faringe',
+        description: 'Músculo constritor da região média da faringe.',
+      },
+      {
+        label: 'Estrutura 6',
+        answer: 'constritor inferior da faringe',
+        description: 'Músculo constritor da porção inferior da faringe.',
       },
     ],
   },
