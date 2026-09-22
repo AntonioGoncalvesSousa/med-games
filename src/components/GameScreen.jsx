@@ -69,7 +69,18 @@ export default function GameScreen({ game, onExit, onFinish }) {
           {state.mode === 'write' ? (
             <form onSubmit={submit} className="answer-form">
               <label htmlFor="answer">Sua resposta</label>
-              <input id="answer" autoComplete="off" value={input} onChange={(event) => { setInput(event.target.value); setAnswerError(''); }} placeholder="Digite o nome da estrutura" disabled={answered} autoFocus={!answered} aria-invalid={Boolean(answerError)} aria-describedby={answerError ? 'answer-error' : undefined} />
+              <input
+                id="answer"
+                autoComplete="off"
+                value={input}
+                className={answered ? (state.feedback.type === 'correct' ? 'field-correct' : 'field-incorrect') : ''}
+                onChange={(event) => { setInput(event.target.value); setAnswerError(''); }}
+                placeholder="Digite o nome da estrutura"
+                disabled={answered}
+                autoFocus={!answered}
+                aria-invalid={Boolean(answerError)}
+                aria-describedby={answerError ? 'answer-error' : undefined}
+              />
               {answerError && <small id="answer-error" className="answer-error" role="alert">{answerError}</small>}
               {state.feedback && <div className={`feedback ${state.feedback.type}`}><span>{state.feedback.type === 'correct' ? '✓' : '×'}</span><div><strong>{state.feedback.type === 'correct' ? 'Correto!' : 'Resposta incorreta'}</strong>{state.feedback.type === 'incorrect' && <small>Resposta: {displayName}</small>}</div></div>}
               <div className="button-row">
