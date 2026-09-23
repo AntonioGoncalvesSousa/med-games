@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { normalizeAnswer } from '../utils/normalizeAnswer';
+import AnatomyViewer from './AnatomyViewer';
 
 const buildEmptyMultiState = (answers = []) => Object.fromEntries(
   answers.map((_, index) => [index + 1, ''])
@@ -20,8 +21,11 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
 
   const current = game?.customQuiz?.[currentIndex];
   const isMultiAnswerQuestion = current?.type === 'multiple';
+  const isModelQuestion = current?.type === 'model';
   const isLastQuestion = currentIndex === (game?.customQuiz?.length || 1) - 1;
-  const answerPrompt = current?.id === 'vestibulo-da-boca'
+  const answerPrompt = isModelQuestion
+    ? current.question
+    : current?.id === 'vestibulo-da-boca'
     ? 'espaço entre os dentes/gengivas e as paredes da boca.'
     : current?.id === 'cavidade-propria-da-boca'
       ? 'parte interna da boca, limitada pelos dentes e pela arcada alveolar.'
@@ -140,9 +144,7 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
 
       <div className="game-layout">
         <section className="viewer-column">
-          <div className="viewer-shell image-quiz-shell">
-            <img src={current.image} alt={current.question} className="image-quiz-image" />
-          </div>
+          {isModelQuestion ? <AnatomyViewer structure={current} modelFile={current.modelFile} /> : <div className="viewer-shell image-quiz-shell"><img src={current.image} alt={current.question} className="image-quiz-image" /></div>}
         </section>
 
         <section className="answer-column">
