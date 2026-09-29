@@ -7,17 +7,65 @@ import { anatomyStructures, muscleRegions, muscleStructures, regions } from './d
 import { bocaFaringeQuestions } from './data/bocaFaringeQuiz';
 import { useAnatomyGame } from './hooks/useAnatomyGame';
 import ImageQuizScreen from './components/ImageQuizScreen';
+import GuidedReviewScreen from './components/GuidedReviewScreen';
+import { guidedHeadReview } from './data/guidedHeadReview';
 
 const games = [
   { id: 'guess-bone', title: 'Adivinhe o Osso', description: 'Identifique estruturas ósseas com um modelo anatômico 3D interativo.', icon: '✦', status: 'disponível', structures: anatomyStructures, regions, promptNoun: 'osso', modelFile: 'skeleton.glb' },
   { id: 'guess-muscle', title: 'Adivinhe o Músculo', description: 'Identifique músculos e seus compartimentos no modelo anatômico 3D.', icon: '✚', status: 'disponível', structures: muscleStructures, regions: muscleRegions, promptNoun: 'músculo', modelFile: 'muscles.glb' },
+  { id: 'guided-head-review', title: 'Roteiro de Cabeça', description: 'Percorra os ossos e músculos do roteiro com visualização anatômica 3D.', icon: '◉', status: 'disponível', guided: true },
   { id: 'boca-e-faringe', title: 'Boca e Faringe', description: 'Questionário com imagens sobre a cavidade oral e o vestibulo.', icon: '◍', status: 'disponível', customQuiz: bocaFaringeQuestions },
   { id: 'arthrology', title: 'Artrologia', description: 'Acesse o questionário de artrologia e teste seus conhecimentos.', icon: '◌', status: 'disponível', externalUrl: 'https://lembro.app/collections/978a8485-8a10-4f61-ac4d-99e8068ab22b' },
 ];
 
 function Home({ games, onPlay }) {
   const scrollToGames = () => document.getElementById('games-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  return <main className="home-page page-enter"><section className="hero"><div className="hero-copy"><p className="eyebrow">PLATAFORMA DE ANATOMIA · 01</p><h1>Aprenda o corpo<br /><em>de dentro para fora.</em></h1><p className="hero-text">Sessões curtas, visualização tridimensional e o tipo de desafio que faz o conhecimento permanecer.</p><button className="primary-button hero-button" onClick={scrollToGames}>Explorar jogos <span>→</span></button></div><div className="hero-orbit" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="hero-symbol">M<span>+</span></div><span className="orbit-label label-top">ANATOMIA<br />EM FOCO</span><span className="orbit-label label-bottom">GIRO · ZOOM · APRENDA</span></div></section><section id="games-section" className="games-section"><div className="section-intro"><p className="eyebrow">1° SEMESTRE</p><h2>Escolha seu próximo <em>desafio.</em></h2></div><div className="game-card-grid">{games.filter((game) => game.id !== 'boca-e-faringe').map((game) => <article className="game-card" key={game.id}><div className="card-top"><span className="game-icon">{game.icon}</span><span className="available"><i />{game.status}</span></div><div><h3>{game.title}</h3><p>{game.description}</p></div><button onClick={() => onPlay(game)} className="card-link">Jogar agora <span>↗</span></button></article>)}</div><div className="section-intro second-semester"><p className="eyebrow">2° SEMESTRE</p><h2>Boca e Faringe</h2></div><div className="game-card-grid second-semester-grid">{games.filter((game) => game.id === 'boca-e-faringe').map((game) => <article className="game-card" key={game.id}><div className="card-top"><span className="game-icon">{game.icon}</span><span className="available"><i />{game.status}</span></div><div><h3>{game.title}</h3><p>{game.description}</p></div><button onClick={() => onPlay(game)} className="card-link">Jogar agora <span>↗</span></button></article>)}</div></section><footer className="app-footer"><span>MED/GAMES</span><span>Modelos baseados no projeto Z-Anatomy · Consulte a licença e os termos de atribuição.</span><span>2026</span></footer></main>;
+  const renderGameCard = (game) => (
+    <article
+      className="game-card"
+      key={game.id}
+      role={game.guided ? 'link' : undefined}
+      tabIndex={game.guided ? 0 : undefined}
+      onClick={game.guided ? (event) => { if (!event.target.closest('button')) onPlay(game); } : undefined}
+      onKeyDown={game.guided ? (event) => {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        onPlay(game);
+      } : undefined}
+    >
+      <div className="card-top"><span className="game-icon">{game.icon}</span><span className="available"><i />{game.status}</span></div>
+      <div><h3>{game.title}</h3><p>{game.description}</p></div>
+      <button onClick={() => onPlay(game)} className="card-link">Jogar agora <span>↗</span></button>
+    </article>
+  );
+  const firstSemesterGames = games.filter((game) => game.id !== 'boca-e-faringe' && game.id !== 'guided-head-review');
+  const secondSemesterGames = games.filter((game) => game.id === 'boca-e-faringe' || game.id === 'guided-head-review');
+
+  return (
+    <main className="home-page page-enter">
+      <section className="hero">
+        <div className="hero-copy">
+          <p className="eyebrow">PLATAFORMA DE ANATOMIA · 01</p>
+          <h1>Aprenda o corpo<br /><em>de dentro para fora.</em></h1>
+          <p className="hero-text">Sessões curtas, visualização tridimensional e o tipo de desafio que faz o conhecimento permanecer.</p>
+          <button className="primary-button hero-button" onClick={scrollToGames}>Explorar jogos <span>→</span></button>
+        </div>
+        <div className="hero-orbit" aria-hidden="true">
+          <div className="orbit orbit-one" /><div className="orbit orbit-two" />
+          <div className="hero-symbol">M<span>+</span></div>
+          <span className="orbit-label label-top">ANATOMIA<br />EM FOCO</span>
+          <span className="orbit-label label-bottom">GIRO · ZOOM · APRENDA</span>
+        </div>
+      </section>
+      <section id="games-section" className="games-section">
+        <div className="section-intro"><p className="eyebrow">1° SEMESTRE</p><h2>Escolha seu próximo <em>desafio.</em></h2></div>
+        <div className="game-card-grid">{firstSemesterGames.map(renderGameCard)}</div>
+        <div className="section-intro second-semester"><p className="eyebrow">2° SEMESTRE</p><h2>Boca e Faringe</h2></div>
+        <div className="game-card-grid second-semester-grid">{secondSemesterGames.map(renderGameCard)}</div>
+      </section>
+      <footer className="app-footer"><span>MED/GAMES</span><span>Modelos baseados no projeto Z-Anatomy · Consulte a licença e os termos de atribuição.</span><span>2026</span></footer>
+    </main>
+  );
 }
 
 function ImageQuizOrderScreen({ game, onBack, onStart }) {
@@ -71,6 +119,10 @@ export default function App() {
       window.open(nextGame.externalUrl, '_blank', 'noopener,noreferrer');
       return;
     }
+    if (nextGame.guided) {
+      setScreen('guided-review');
+      return;
+    }
     if (nextGame.customQuiz) {
       setSelectedGame(nextGame);
       setImageQuizResult(null);
@@ -89,5 +141,5 @@ export default function App() {
     },
     percentage: imageQuizResult.percentage,
   } : null;
-  return <div className={`app-shell ${lightTheme ? 'light-theme' : ''}`}><Header onHome={goHome} lightTheme={lightTheme} onThemeChange={(event) => setLightTheme(event.target.checked)} />{screen === 'home' && <Home games={games} onPlay={openSettings} />}{screen === 'settings' && <GameSettings game={selectedGame} onBack={goHome} onStart={startGame} />}{screen === 'image-quiz-order' && <ImageQuizOrderScreen game={selectedGame} onBack={goHome} onStart={startCustomQuiz} />}{screen === 'image-quiz' && <ImageQuizScreen game={customQuizSession ?? selectedGame} onBack={goHome} onFinish={(summary) => { setImageQuizResult(summary); setScreen('image-quiz-result'); }} />}{screen === 'image-quiz-result' && customResultGame && <ResultScreen game={customResultGame} onAgain={() => { setImageQuizResult(null); setCustomQuizSession(null); setScreen('image-quiz-order'); }} onHome={goHome} />}{screen === 'game' && <GameScreen game={game} onExit={() => setScreen('settings')} onFinish={() => setScreen('result')} />}{screen === 'result' && <ResultScreen game={game} onAgain={() => setScreen('settings')} onHome={goHome} />}</div>;
+  return <div className={`app-shell ${lightTheme ? 'light-theme' : ''}`}><Header onHome={goHome} lightTheme={lightTheme} onThemeChange={(event) => setLightTheme(event.target.checked)} />{screen === 'home' && <Home games={games} onPlay={openSettings} />}{screen === 'settings' && <GameSettings game={selectedGame} onBack={goHome} onStart={startGame} />}{screen === 'guided-review' && <GuidedReviewScreen steps={guidedHeadReview} onExit={goHome} />}{screen === 'image-quiz-order' && <ImageQuizOrderScreen game={selectedGame} onBack={goHome} onStart={startCustomQuiz} />}{screen === 'image-quiz' && <ImageQuizScreen game={customQuizSession ?? selectedGame} onBack={goHome} onFinish={(summary) => { setImageQuizResult(summary); setScreen('image-quiz-result'); }} />}{screen === 'image-quiz-result' && customResultGame && <ResultScreen game={customResultGame} onAgain={() => { setImageQuizResult(null); setCustomQuizSession(null); setScreen('image-quiz-order'); }} onHome={goHome} />}{screen === 'game' && <GameScreen game={game} onExit={() => setScreen('settings')} onFinish={() => setScreen('result')} />}{screen === 'result' && <ResultScreen game={game} onAgain={() => setScreen('settings')} onHome={goHome} />}</div>;
 }

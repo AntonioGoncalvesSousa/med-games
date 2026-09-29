@@ -60,26 +60,165 @@ function clearHighlights(root) {
 }
 
 function hideModelLabels(root) {
-  let hiddenLabels = 0;
   root.traverse((object) => {
     if (!object.isMesh) return;
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     const isTextOnly = materials.length > 0 && materials.every((material) => material.name === 'Text');
-    if (isTextOnly) {
-      object.userData.isModelLabel = true;
+    if (!isTextOnly) return;
+    object.userData.isModelLabel = true;
+    object.material = Array.isArray(object.material)
+      ? materials.map((material) => {
+        const labelMaterial = material.clone();
+        labelMaterial.transparent = true;
+        labelMaterial.opacity = 0;
+        labelMaterial.depthWrite = false;
+        return labelMaterial;
+      })
+      : materials[0].clone();
+    if (!Array.isArray(object.material)) {
+      object.material.transparent = true;
+      object.material.opacity = 0;
+      object.material.depthWrite = false;
     }
-    const hiddenMaterials = materials.map((material) => {
-      if (material.name !== 'Text') return material;
-      const invisibleMaterial = material.clone();
-      invisibleMaterial.transparent = true;
-      invisibleMaterial.opacity = 0;
-      invisibleMaterial.depthWrite = false;
-      hiddenLabels += 1;
-      return invisibleMaterial;
-    });
-    object.material = Array.isArray(object.material) ? hiddenMaterials : hiddenMaterials[0];
   });
-  return hiddenLabels;
+}
+
+function findClosestSurfacePoint(meshes, worldPoint) {
+  const closestPoint = new THREE.Vector3();
+  const worldClosestPoint = new THREE.Vector3();
+  const vertexA = new THREE.Vector3();
+  const vertexB = new THREE.Vector3();
+  const vertexC = new THREE.Vector3();
+  const bestPoint = new THREE.Vector3();
+  const triangle = new THREE.Triangle();
+  let bestDistanceSquared = Infinity;
+
+  meshes.forEach((mesh) => {
+    const geometry = mesh.geometry;
+    const positions = geometry?.attributes?.position;
+    if (!positions) return;
+
+    const worldBounds = new THREE.Box3().setFromObject(mesh);
+    if (worldBounds.distanceToPoint(worldPoint) ** 2 > bestDistanceSquared) return;
+
+    const indices = geometry.index;
+    const vertexCount = indices ? indices.count : positions.count;
+    const start = geometry.drawRange.start || 0;
+    const end = Math.min(start + geometry.drawRange.count, vertexCount);
+
+    for (let index = start; index + 2 < end; index += 3) {
+      const a = indices ? indices.getX(index) : index;
+      const b = indices ? indices.getX(index + 1) : index + 1;
+      const c = indices ? indices.getX(index + 2) : index + 2;
+      triangle.a.copy(vertexA.fromBufferAttribute(positions, a).applyMatrix4(mesh.matrixWorld));
+      triangle.b.copy(vertexB.fromBufferAttribute(positions, b).applyMatrix4(mesh.matrixWorld));
+      triangle.c.copy(vertexC.fromBufferAttribute(positions, c).applyMatrix4(mesh.matrixWorld));
+      triangle.closestPointToPoint(worldPoint, worldClosestPoint);
+      const distanceSquared = worldClosestPoint.distanceToSquared(worldPoint);
+      if (distanceSquared >= bestDistanceSquared) continue;
+      bestDistanceSquared = distanceSquared;
+      bestPoint.copy(worldClosestPoint);
+    }
+  });
+
+  return Number.isFinite(bestDistanceSquared) ? bestPoint : null;
+}
+
+function addTranslatedModelLabels(root, scene, labels) {
+  root.updateMatrixWorld(true);
+  const modelLabels = [];
+  root.traverse((object) => {
+    if (object.userData.isModelLabel) modelLabels.push(object);
+  });
+
+  labels.forEach((label) => {
+    const targetNames = new Set(label.meshNames.flatMap((name) => [...modelNameVariants(name)]));
+    modelLabels
+      .filter((object) => [...modelNameVariants(object.name)].some((name) => targetNames.has(name)))
+      .forEach((object) => {
+        const bounds = new THREE.Box3().setFromObject(object);
+        if (bounds.isEmpty()) return;
+        const center = bounds.getCenter(new THREE.Vector3());
+        const nativeLabelSize = bounds.getSize(new THREE.Vector3());
+        const pixelRatio = 2;
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) return;
+        context.font = `600 ${18 * pixelRatio}px Manrope, sans-serif`;
+        const textWidth = context.measureText(label.name).width;
+        canvas.width = Math.ceil(textWidth + 20 * pixelRatio);
+        canvas.height = 40 * pixelRatio;
+        context.font = `600 ${18 * pixelRatio}px Manrope, sans-serif`;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.lineJoin = 'round';
+        context.lineWidth = 3 * pixelRatio;
+        context.strokeStyle = 'rgba(13, 27, 42, 0.9)';
+        context.strokeText(label.name, canvas.width / 2, canvas.height / 2);
+        context.fillStyle = '#f4f0e8';
+        context.fillText(label.name, canvas.width / 2, canvas.height / 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        const material = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        const sprite = new THREE.Sprite(material);
+        const height = Math.max(nativeLabelSize.y * 0.55, 0.006);
+        const width = height * (canvas.width / canvas.height);
+        sprite.scale.set(width, height, 1);
+        sprite.position.copy(center);
+        sprite.renderOrder = 10;
+
+        let boneRoot = object.parent;
+        while (boneRoot && !boneRoot.isMesh) boneRoot = boneRoot.parent;
+        const targetMeshes = [];
+        boneRoot?.traverse((child) => {
+          if (!child.isMesh || child.userData.isModelLabel) return;
+          targetMeshes.push(child);
+        });
+        if (targetMeshes.length) {
+          const bounds = new THREE.Box3();
+          targetMeshes.forEach((mesh) => bounds.expandByObject(mesh));
+          const target = findClosestSurfacePoint(targetMeshes, center) ?? bounds.clampPoint(center, new THREE.Vector3());
+          const direction = target.clone().sub(center);
+          const distance = direction.length();
+          if (distance > height * 0.35) {
+            const unitDirection = direction.normalize();
+            const lineStart = center.clone().addScaledVector(unitDirection, Math.min(height * 0.45, distance * 0.3));
+            const lineDistance = lineStart.distanceTo(target);
+            const lineRadius = Math.max(bounds.getSize(new THREE.Vector3()).length() * 0.0045, 0.001);
+            const lineGeometry = new THREE.CylinderGeometry(lineRadius, lineRadius, lineDistance, 6);
+            const lineMaterial = new THREE.MeshBasicMaterial({
+              color: 0xffd778,
+              depthTest: false,
+              depthWrite: false,
+              toneMapped: false,
+            });
+            const line = new THREE.Mesh(lineGeometry, lineMaterial);
+            line.position.copy(lineStart).add(target).multiplyScalar(0.5);
+            line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), target.clone().sub(lineStart).normalize());
+            line.renderOrder = 9;
+            scene.add(line);
+
+            const arrowLength = Math.min(Math.max(height * 0.45, lineRadius * 5), lineDistance * 0.4);
+            const arrow = new THREE.Mesh(
+              new THREE.ConeGeometry(lineRadius * 2.5, arrowLength, 6),
+              lineMaterial.clone(),
+            );
+            arrow.position.copy(target).addScaledVector(unitDirection, -arrowLength * 0.5);
+            arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), unitDirection);
+            arrow.renderOrder = 9;
+            scene.add(arrow);
+          }
+        }
+        scene.add(sprite);
+      });
+  });
 }
 
 function captureOriginalMaterials(root) {
@@ -128,11 +267,12 @@ function hideNonMuscleMeshes(root) {
   });
 }
 
-function applyHighlight(model, structure, controls, camera, transparentMode = false, hideTarget = false, keyColors = false, shouldCenter = true) {
+function applyHighlight(model, structure, controls, camera, transparentMode = false, hideTarget = false, keyColors = false, shouldCenter = true, contextOpacity = 1) {
   clearHighlights(model.root);
   const highlightedMeshes = findStructure(model.root, structure?.meshNames);
   const highlightedSet = new Set(highlightedMeshes);
   const canUseTransparentMode = transparentMode && highlightedMeshes.length > 0;
+  const canDimContext = contextOpacity < 1 && highlightedMeshes.length > 0;
   const outlineMaterial = new THREE.LineBasicMaterial({ color: 0xffc857, transparent: true, opacity: 0.95 });
 
   model.root.traverse((object) => {
@@ -157,9 +297,9 @@ function applyHighlight(model, structure, controls, camera, transparentMode = fa
       if (highlighted) material.emissive?.set(0x7d2413);
       else material.emissive?.set(0x000000);
       if ('emissiveIntensity' in material) material.emissiveIntensity = highlighted ? 0.85 : 0;
-      material.transparent = canUseTransparentMode && !highlighted;
-      material.opacity = highlighted ? 1 : canUseTransparentMode ? 0.2 : 1;
-      material.depthWrite = !canUseTransparentMode || highlighted;
+      material.transparent = (canUseTransparentMode || canDimContext) && !highlighted;
+      material.opacity = highlighted ? 1 : canUseTransparentMode ? 0.2 : contextOpacity;
+      material.depthWrite = !(canUseTransparentMode || canDimContext) || highlighted;
       return material;
     });
     object.material = Array.isArray(object.material) ? materials : materials[0];
@@ -211,7 +351,7 @@ function zoomCamera(camera, controls, direction) {
   controls.update();
 }
 
-export default function AnatomyViewer({ structure, modelFile = structure?.modelFile || 'skeleton.glb' }) {
+export default function AnatomyViewer({ structure, modelFile = structure?.modelFile || 'skeleton.glb', contextOpacity = 1, labels = [] }) {
   const mountRef = useRef(null);
   const modelRef = useRef(null);
   const cameraRef = useRef(null);
@@ -292,6 +432,7 @@ export default function AnatomyViewer({ structure, modelFile = structure?.modelF
       captureOriginalMaterials(gltf.scene);
       modelRef.current = { root: gltf.scene, fallback: false };
       scene.add(gltf.scene);
+      addTranslatedModelLabels(gltf.scene, scene, labels);
       setLoadProgress(100);
       setModelState('ready');
     }, (progress) => {
@@ -314,7 +455,10 @@ export default function AnatomyViewer({ structure, modelFile = structure?.modelF
         if (object.geometry) object.geometry.dispose();
         if (object.material) {
           const materials = Array.isArray(object.material) ? object.material : [object.material];
-          materials.forEach((material) => material.dispose());
+          materials.forEach((material) => {
+            material.map?.dispose();
+            material.dispose();
+          });
         }
       });
     };
@@ -327,10 +471,10 @@ export default function AnatomyViewer({ structure, modelFile = structure?.modelF
     const controls = controlsRef.current;
     if (camera && controls) {
       const shouldCenter = previousKeyColorsRef.current === keyColorsEnabled;
-      applyHighlight(model, structure, controls, camera, transparentMode, hideTarget, keyColorsEnabled, shouldCenter);
+      applyHighlight(model, structure, controls, camera, transparentMode, hideTarget, keyColorsEnabled, shouldCenter, contextOpacity);
       previousKeyColorsRef.current = keyColorsEnabled;
     }
-  }, [structure, modelState, transparentMode, hideTarget, keyColorsEnabled]);
+  }, [structure, modelState, transparentMode, hideTarget, keyColorsEnabled, contextOpacity]);
 
   return (
     <div className="viewer-shell">
