@@ -23,7 +23,9 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
   const isMultiAnswerQuestion = current?.type === 'multiple';
   const isModelQuestion = current?.type === 'model';
   const isLastQuestion = currentIndex === (game?.customQuiz?.length || 1) - 1;
-  const answerPrompt = isModelQuestion
+  const answerPrompt = current?.isCreatedQuiz
+    ? current.question
+    : isModelQuestion
     ? current.question
     : current?.id === 'vestibulo-da-boca'
     ? 'espaço entre os dentes/gengivas e as paredes da boca.'
@@ -80,7 +82,10 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
 
       const nextStatus = {};
       current.answers.forEach((item, index) => {
-        const hasCorrectValue = normalizeAnswer(values[index]) === normalizeAnswer(item.answer);
+        const acceptedAnswers = item.acceptedAnswers || [item.answer];
+        const hasCorrectValue = acceptedAnswers.some(
+          (answer) => normalizeAnswer(values[index]) === normalizeAnswer(answer)
+        );
         nextStatus[index + 1] = hasCorrectValue ? 'correct' : 'incorrect';
       });
 
@@ -102,7 +107,10 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
     }
 
     setAnswerError('');
-    const isCorrect = normalizeAnswer(trimmed) === normalizeAnswer(current.answer);
+    const acceptedAnswers = current.acceptedAnswers || [current.answer];
+    const isCorrect = acceptedAnswers.some(
+      (answer) => normalizeAnswer(trimmed) === normalizeAnswer(answer)
+    );
     setFeedback(isCorrect ? 'correct' : 'incorrect');
     setResultSummary((previous) => ({
       correct: previous.correct + (isCorrect ? 1 : 0),
