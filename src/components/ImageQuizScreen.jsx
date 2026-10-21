@@ -13,6 +13,7 @@ const buildEmptyMultiStatus = (answers = []) => Object.fromEntries(
 export default function ImageQuizScreen({ game, onBack, onFinish }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [input, setInput] = useState('');
+  const [selectedOption, setSelectedOption] = useState(null);
   const [multiInputs, setMultiInputs] = useState(() => buildEmptyMultiState(game?.customQuiz?.[0]?.answers || []));
   const [multiStatus, setMultiStatus] = useState(() => buildEmptyMultiStatus(game?.customQuiz?.[0]?.answers || []));
   const [feedback, setFeedback] = useState(null);
@@ -21,6 +22,7 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
 
   const current = game?.customQuiz?.[currentIndex];
   const isMultiAnswerQuestion = current?.type === 'multiple';
+  const isMultipleChoiceQuestion = current?.type === 'multiple_choice' || current?.type === 'multiple';
   const isModelQuestion = current?.type === 'model';
   const isLastQuestion = currentIndex === (game?.customQuiz?.length || 1) - 1;
   const answerPrompt = current?.isCreatedQuiz
@@ -42,13 +44,14 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
   }, [currentIndex, game]);
 
   useEffect(() => {
-    if (!current || !current.answers) {
+    if (!current) {
       return undefined;
     }
 
-    setMultiInputs(buildEmptyMultiState(current.answers));
-    setMultiStatus(buildEmptyMultiStatus(current.answers));
+    setMultiInputs(buildEmptyMultiState(current.answers || []));
+    setMultiStatus(buildEmptyMultiStatus(current.answers || []));
     setInput('');
+    setSelectedOption(null);
     setFeedback(null);
     setAnswerError('');
     return undefined;
@@ -92,6 +95,26 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
       const isCorrect = Object.values(nextStatus).every((status) => status === 'correct');
       setMultiStatus(nextStatus);
       setAnswerError('');
+      setFeedback(isCorrect ? 'correct' : 'incorrect');
+      setResultSummary((previous) => ({
+        correct: previous.correct + (isCorrect ? 1 : 0),
+        incorrect: previous.incorrect + (isCorrect ? 0 : 1),
+      }));
+      return;
+    }
+
+    if (isMultipleChoiceQuestion) {
+      const selectedValue = (selectedOption ?? '').trim();
+      if (!selectedValue) {
+        setAnswerError('Selecione uma alternativa antes de continuar.');
+        return;
+      }
+
+      setAnswerError('');
+      const acceptedAnswers = current.acceptedAnswers || [current.answer];
+      const isCorrect = acceptedAnswers.some(
+        (answer) => normalizeAnswer(selectedValue) === normalizeAnswer(answer)
+      );
       setFeedback(isCorrect ? 'correct' : 'incorrect');
       setResultSummary((previous) => ({
         correct: previous.correct + (isCorrect ? 1 : 0),
@@ -150,18 +173,38 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
       </div>
       <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
 
-      <div className="game-layout">
-        <section className="viewer-column">
-          {isModelQuestion ? <AnatomyViewer structure={current} modelFile={current.modelFile} /> : <div className="viewer-shell image-quiz-shell"><img src={current.image} alt={current.question} className="image-quiz-image" /></div>}
-        </section>
+      <div className={`game-layout ${current?.type === 'open_text' || current?.type === 'multiple_choice' ? 'single-column-quiz' : ''}`}>
+        {current?.type !== 'open_text' && current?.type !== 'multiple_choice' && (
+          <section className="viewer-column">
+            {isModelQuestion ? <AnatomyViewer structure={current} modelFile={current.modelFile} /> : <div className="viewer-shell image-quiz-shell"><img src={current.image} alt={current.question} className="image-quiz-image" /></div>}
+          </section>
+        )}
 
         <section className="answer-column">
           <p className="eyebrow">Identificação anatômica</p>
-          <h1>Qual é esta <em>estrutura?</em></h1>
+          <h1>{isMultipleChoiceQuestion ? 'Qual alternativa é a correta?' : <>Qual é esta <em>estrutura?</em></>}</h1>
           <p className="answer-prompt">{answerPrompt}</p>
 
           <form onSubmit={submitAnswer} className="answer-form">
-            {!isMultiAnswerQuestion ? (
+            {isMultipleChoiceQuestion ? (
+              <div className="multiple-choice-answer-list">
+                {current.options?.map((option, index) => (
+                  <button
+                    key={`${current.id}-option-${index}`}
+                    type="button"
+                    className={`multiple-choice-answer ${selectedOption === option ? 'selected' : ''} ${feedback ? (normalizeAnswer(option) === normalizeAnswer(current.answer) ? 'correct' : selectedOption === option ? 'incorrect' : '') : ''}`}
+                    onClick={() => {
+                      if (feedback) return;
+                      setSelectedOption(option);
+                      setAnswerError('');
+                    }}
+                    disabled={Boolean(feedback)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            ) : !isMultiAnswerQuestion ? (
               <>
                 <label htmlFor="image-quiz-answer">Sua resposta</label>
                 <input
@@ -173,7 +216,7 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
                     if (feedback) setFeedback(null);
                     if (answerError) setAnswerError('');
                   }}
-                  placeholder="Digite o nome da estrutura"
+                  placeholder={current?.type === 'open_text' ? 'Digite sua resposta' : 'Digite o nome da estrutura'}
                   autoFocus
                   disabled={Boolean(feedback)}
                   aria-invalid={Boolean(answerError)}
@@ -218,7 +261,9 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
                     <small>
                       {isMultiAnswerQuestion
                         ? `Respostas corretas: ${current.answers.map((item) => item.answer).join(' • ')}`
-                        : `Resposta: ${current.answer}`}
+                        : isMultipleChoiceQuestion
+                          ? `Resposta correta: ${current.answer}`
+                          : `Resposta: ${current.answer}`}
                     </small>
                   )}
                 </div>
@@ -227,7 +272,11 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
 
             <div className="button-row">
               {!feedback ? (
-                <button type="submit" className="primary-button">Responder <span>↗</span></button>
+                isMultipleChoiceQuestion ? (
+                  <button type="submit" className="primary-button">Confirmar alternativa <span>↗</span></button>
+                ) : (
+                  <button type="submit" className="primary-button">Responder <span>↗</span></button>
+                )
               ) : (
                 <button type="button" className="primary-button" onClick={handleNext}>{isLastQuestion ? 'Finalizar' : 'Próxima questão'} <span>→</span></button>
               )}

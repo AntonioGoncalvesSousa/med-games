@@ -11,6 +11,9 @@ import GuidedReviewScreen from './components/GuidedReviewScreen';
 import { guidedHeadReview } from './data/guidedHeadReview';
 import CreateQuizScreen from './components/CreateQuizScreen';
 import LoginScreen from './components/LoginScreen';
+import CreateVisualizationScreen from './components/CreateVisualizationScreen';
+import VisualizationsScreen from './components/VisualizationsScreen';
+import VisualizationViewer from './components/VisualizationViewer';
 import { supabase } from './lib/supabaseClient';
 
 const games = [
@@ -195,13 +198,22 @@ function ImageQuizOrderScreen({ game, onBack, onStart, onEdit, canEdit }) {
       </div>
       <div className="game-layout">
         <section className="viewer-column">
-          <div className="viewer-shell image-quiz-shell">
-            <img
-              src={game.customQuiz[0]?.image}
-              alt={game.customQuiz[0]?.imageAlt || 'Pré-visualização do questionário'}
-              className="image-quiz-image"
-            />
-          </div>
+          {game.customQuiz[0]?.image ? (
+            <div className="viewer-shell image-quiz-shell">
+              <img
+                src={game.customQuiz[0]?.image}
+                alt={game.customQuiz[0]?.imageAlt || 'Pré-visualização do questionário'}
+                className="image-quiz-image"
+              />
+            </div>
+          ) : (
+            <div className="viewer-shell image-quiz-shell placeholder-quiz-shell">
+              <div className="quiz-placeholder-copy">
+                <span>Questionário</span>
+                <strong>{game.title}</strong>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="answer-column">
@@ -236,6 +248,7 @@ export default function App() {
   const [settings, setSettings] = useState(null);
   const [selectedGame, setSelectedGame] = useState(games[0]);
   const [quizToEdit, setQuizToEdit] = useState(null);
+  const [selectedVisualizationId, setSelectedVisualizationId] = useState(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -263,6 +276,12 @@ export default function App() {
     if (!authLoading && !user && screen === 'create-quiz') {
       setQuizToEdit(null);
       setScreen('home');
+    }
+    if (!authLoading && !user && screen === 'create-visualization') {
+      setScreen('visualizations');
+    }
+    if (!authLoading && !user && screen === 'edit-visualization') {
+      setScreen('visualizations');
     }
     if (user && screen === 'login') {
       setScreen('home');
@@ -309,12 +328,32 @@ export default function App() {
     const customQuestions = questionRecords.map((question) => {
       const answerRecords = [...(question.quiz_answers ?? [])]
         .sort((first, second) => first.position - second.position);
+      const type = question.type || 'image_identification';
+      const options = Array.isArray(question.options) ? question.options.map((option) => String(option).trim()).filter(Boolean) : [];
       const acceptedAnswers = answerRecords.map((answer) => (
-        answer.accepted_answers.split(',').map((value) => value.trim()).filter(Boolean)
+        (answer.accepted_answers || '')
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
       ));
 
       if (!acceptedAnswers.length || acceptedAnswers.some((answers) => !answers.length)) {
         throw new Error('Este questionário tem perguntas sem respostas válidas cadastradas.');
+      }
+
+      if (type === 'multiple_choice') {
+        const canonicalOptions = options.length ? options : acceptedAnswers.map((answerGroup) => answerGroup[0]);
+        return {
+          id: question.id,
+          image: question.image_path,
+          imageAlt: question.image_alt,
+          question: question.prompt,
+          type: 'multiple_choice',
+          options: canonicalOptions.slice(0, 4),
+          answer: acceptedAnswers[0]?.[0] ?? canonicalOptions[0] ?? '',
+          acceptedAnswers: acceptedAnswers[0] ?? [canonicalOptions[0] ?? ''],
+          isCreatedQuiz: true,
+        };
       }
 
       return {
@@ -322,19 +361,16 @@ export default function App() {
         image: question.image_path,
         imageAlt: question.image_alt,
         question: question.prompt,
+        type,
         isCreatedQuiz: true,
-        ...(acceptedAnswers.length > 1
+        ...(type === 'image_identification'
           ? {
-              type: 'multiple',
-              answers: acceptedAnswers.map((answers, answerIndex) => ({
-                label: `Estrutura ${answerIndex + 1}`,
-                answer: answers[0],
-                acceptedAnswers: answers,
-              })),
+              answer: acceptedAnswers[0]?.[0] ?? '',
+              acceptedAnswers: acceptedAnswers[0] ?? [],
             }
           : {
-              answer: acceptedAnswers[0][0],
-              acceptedAnswers: acceptedAnswers[0],
+              answer: acceptedAnswers[0]?.[0] ?? '',
+              acceptedAnswers: acceptedAnswers[0] ?? [],
             }),
       };
     });
@@ -402,6 +438,7 @@ export default function App() {
     <div className={`app-shell ${lightTheme ? 'light-theme' : ''}`}>
       <Header
         onHome={goHome}
+        onVisualizations={() => setScreen('visualizations')}
         onCreateQuiz={() => {
           if (!user) return;
           setQuizToEdit(null);
@@ -415,6 +452,42 @@ export default function App() {
       />
       {authError && <p className="created-quizzes-message created-quizzes-error auth-message" role="alert">{authError}</p>}
       {screen === 'home' && <Home games={games} onPlay={openSettings} onPlayCreatedQuiz={playCreatedQuiz} />}
+      {screen === 'visualizations' && (
+        <VisualizationsScreen
+          canCreate={Boolean(user)}
+          onOpen={(visualizationId) => {
+            setSelectedVisualizationId(visualizationId);
+            setScreen('visualization-viewer');
+          }}
+          onCreate={() => {
+            if (user) setScreen('create-visualization');
+          }}
+          onEdit={(visualizationId) => {
+            if (!user) return;
+            setSelectedVisualizationId(visualizationId);
+            setScreen('edit-visualization');
+          }}
+        />
+      )}
+      {screen === 'visualization-viewer' && selectedVisualizationId && (
+        <VisualizationViewer
+          visualizationId={selectedVisualizationId}
+          onBack={() => setScreen('visualizations')}
+        />
+      )}
+      {screen === 'create-visualization' && user && (
+        <CreateVisualizationScreen
+          onBack={() => setScreen('visualizations')}
+          onSaved={() => setScreen('visualizations')}
+        />
+      )}
+      {screen === 'edit-visualization' && user && selectedVisualizationId && (
+        <CreateVisualizationScreen
+          visualizationId={selectedVisualizationId}
+          onBack={() => setScreen('visualizations')}
+          onSaved={() => setScreen('visualizations')}
+        />
+      )}
       {screen === 'login' && !user && <LoginScreen onBack={goHome} onLoginSuccess={handleLoginSuccess} />}
       {screen === 'create-quiz' && user && <CreateQuizScreen quizToEdit={quizToEdit} onBack={goHome} />}
       {screen === 'settings' && <GameSettings game={selectedGame} onBack={goHome} onStart={startGame} />}

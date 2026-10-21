@@ -3,13 +3,16 @@ import { supabase } from '../lib/supabaseClient';
 
 const createAnswer = () => ({ id: crypto.randomUUID(), acceptedAnswers: '' });
 
-const createQuestion = () => ({
+const createQuestion = (type = 'image_identification') => ({
   id: crypto.randomUUID(),
+  type,
   prompt: '',
   imageFile: null,
   imagePreview: '',
   imagePath: '',
   imageAlt: '',
+  options: Array(4).fill(''),
+  correctOptionIndex: 0,
   answers: [createAnswer()],
 });
 
@@ -27,13 +30,20 @@ function questionFromQuiz(quizToEdit) {
           acceptedAnswers: answer.accepted_answers ?? '',
         }));
 
+      const options = Array.isArray(savedQuestion.options) ? savedQuestion.options : Array(4).fill('');
+      const correctAnswer = (answers[0]?.acceptedAnswers ?? '').trim();
+      const correctOptionIndex = options.findIndex((option) => option.trim() === correctAnswer);
+
       return {
         id: savedQuestion.id ?? crypto.randomUUID(),
+        type: savedQuestion.type ?? 'image_identification',
         prompt: savedQuestion.prompt ?? '',
         imageFile: null,
         imagePreview: savedQuestion.image_path ?? '',
         imagePath: savedQuestion.image_path ?? '',
         imageAlt: savedQuestion.image_alt ?? '',
+        options: options.length ? options.map((option) => option ?? '') : Array(4).fill(''),
+        correctOptionIndex: correctOptionIndex >= 0 ? correctOptionIndex : 0,
         answers: answers.length ? answers : [createAnswer()],
       };
     });
@@ -69,6 +79,18 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
     setQuestions((current) => current.map((question) => (
       question.id === questionId ? { ...question, [field]: value } : question
     )));
+  };
+
+  const updateQuestionOption = (questionId, optionIndex, value) => {
+    setQuestions((current) => current.map((question) => {
+      if (question.id !== questionId) {
+        return question;
+      }
+
+      const nextOptions = [...question.options];
+      nextOptions[optionIndex] = value;
+      return { ...question, options: nextOptions };
+    }));
   };
 
   const updateAnswer = (questionId, answerId, value) => {
@@ -110,7 +132,7 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
   };
 
   const addQuestion = () => {
-    setQuestions((current) => [...current, createQuestion()]);
+    setQuestions((current) => [...current, createQuestion(current.at(-1)?.type ?? 'image_identification')]);
   };
 
   const removeQuestion = (questionId) => {
@@ -174,18 +196,12 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
         const promptValue = (question.prompt || 'Identifique essa estrutura').trim();
         const imageAltValue = (question.imageAlt || 'Imagem do questionário').trim() || 'Imagem do questionário';
 
-        if (!question.imageFile && !question.imagePath) {
+        if (question.type === 'image_identification' && !question.imageFile && !question.imagePath) {
           throw new Error(`Selecione uma imagem para a pergunta ${questionIndex + 1}.`);
         }
 
-        const cleanedAnswers = question.answers.map((answer) => normalizeAcceptedAnswers(answer.acceptedAnswers));
-
-        if (!cleanedAnswers.some((entries) => entries.length > 0)) {
-          throw new Error(`Adicione pelo menos uma resposta válida para a pergunta ${questionIndex + 1}.`);
-        }
-
-        let imagePath = question.imagePath;
-        if (question.imageFile) {
+        let imagePath = question.imagePath || null;
+        if (question.type === 'image_identification' && question.imageFile) {
           const fileExtension = question.imageFile.name.split('.').pop() || 'png';
           const storageFileName = `${Date.now()}-${questionIndex + 1}.${fileExtension}`;
           const storagePath = `${userData.user.id}/${storageFileName}`;
@@ -203,14 +219,49 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
           imagePath = publicUrlData.publicUrl;
         }
 
+        if (question.type === 'open_text' || question.type === 'image_identification') {
+          const cleanedAnswers = question.answers.map((answer) => normalizeAcceptedAnswers(answer.acceptedAnswers));
+
+          if (!cleanedAnswers.some((entries) => entries.length > 0)) {
+            throw new Error(`Adicione pelo menos uma resposta válida para a pergunta ${questionIndex + 1}.`);
+          }
+
+          preparedQuestions.push({
+            questionIndex,
+            type: question.type,
+            prompt: promptValue,
+            imagePath: question.type === 'open_text' ? null : imagePath,
+            imageAlt: question.type === 'open_text' ? null : imageAltValue,
+            options: null,
+            answerValues: cleanedAnswers
+              .map((acceptedAnswers) => acceptedAnswers.join(', '))
+              .filter(Boolean),
+          });
+          continue;
+        }
+
+        const optionValues = question.options.map((option) => option.trim()).filter(Boolean);
+        if (optionValues.length < 2) {
+          throw new Error(`Preencha pelo menos 2 alternativas para a pergunta ${questionIndex + 1}.`);
+        }
+
+        if (question.correctOptionIndex < 0 || question.correctOptionIndex >= question.options.length) {
+          throw new Error(`Selecione a alternativa correta da pergunta ${questionIndex + 1}.`);
+        }
+
+        const correctOption = question.options[question.correctOptionIndex]?.trim();
+        if (!correctOption) {
+          throw new Error(`Selecione a alternativa correta da pergunta ${questionIndex + 1}.`);
+        }
+
         preparedQuestions.push({
           questionIndex,
+          type: question.type,
           prompt: promptValue,
-          imagePath,
-          imageAlt: imageAltValue,
-          answerValues: cleanedAnswers
-            .map((acceptedAnswers) => acceptedAnswers.join(', '))
-            .filter(Boolean),
+          imagePath: null,
+          imageAlt: null,
+          options: question.options,
+          answerValues: [correctOption],
         });
       }
 
@@ -242,12 +293,14 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
         }
       }
 
-      const questionRows = preparedQuestions.map(({ questionIndex, prompt, imagePath, imageAlt }) => ({
+      const questionRows = preparedQuestions.map(({ questionIndex, type, prompt, imagePath, imageAlt, options }) => ({
         quiz_id: quizRecord.id,
         position: questionIndex + 1,
+        type,
         prompt,
         image_path: imagePath,
         image_alt: imageAlt,
+        options: options ? options : null,
       }));
       const { data: savedQuestions, error: questionsInsertError } = await supabase
         .from('quiz_questions')
@@ -369,64 +422,105 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
 
                 <div className="quiz-form-grid">
                   <label className="quiz-field quiz-field-wide">
+                    <span>Tipo da pergunta</span>
+                    <select
+                      value={question.type}
+                      onChange={(event) => updateQuestion(question.id, 'type', event.target.value)}
+                    >
+                      <option value="image_identification">Identificação por imagem</option>
+                      <option value="open_text">Resposta aberta</option>
+                      <option value="multiple_choice">Múltipla escolha</option>
+                    </select>
+                  </label>
+                  <label className="quiz-field quiz-field-wide">
                     <span>Pergunta</span>
                     <textarea
                       value={question.prompt}
                       onChange={(event) => updateQuestion(question.id, 'prompt', event.target.value)}
                       rows={3}
                       maxLength={1000}
-                      placeholder="Identifique essa estrutura"
+                      placeholder={question.type === 'multiple_choice' ? 'Ex.: Qual estrutura é esta?' : 'Identifique essa estrutura'}
                     />
                   </label>
                 </div>
 
-                <div className="question-media-grid">
-                  <label className="quiz-field quiz-field-wide image-upload-box">
-                    <span>Imagem da pergunta</span>
-                    <input type="file" accept="image/*" onChange={(event) => handleImageChange(question.id, event)} />
-                    {question.imagePreview ? (
-                      <img src={question.imagePreview} alt={question.imageAlt || 'Prévia da imagem'} className="question-preview" />
-                    ) : (
-                      <span className="image-upload-placeholder">Selecione uma imagem da sua máquina</span>
-                    )}
-                    {question.imagePath && !question.imageFile && <small>Selecione outra imagem para substituir a atual.</small>}
-                  </label>
-
-                  <label className="quiz-field quiz-field-wide">
-                    <span>Texto alternativo da imagem</span>
-                    <input
-                      value={question.imageAlt}
-                      onChange={(event) => updateQuestion(question.id, 'imageAlt', event.target.value)}
-                      maxLength={250}
-                      placeholder="Descreva a imagem"
-                    />
-                  </label>
-                </div>
-
-                <div className="quiz-answer-editor">
-                  {question.answers.map((answer, answerIndex) => (
-                    <div className="quiz-answer-row" key={answer.id}>
-                      <span className="quiz-answer-number">{String(answerIndex + 1).padStart(2, '0')}</span>
-                      <label className="quiz-field quiz-field-wide">
-                        <span>Respostas aceitas <small>(separadas por vírgula)</small></span>
-                        <input
-                          value={answer.acceptedAnswers}
-                          onChange={(event) => updateAnswer(question.id, answer.id, event.target.value)}
-                          placeholder="Ex.: palato duro, palato ósseo, palato"
-                        />
-                      </label>
-                      {question.answers.length > 1 && (
-                        <button type="button" className="remove-answer-button" onClick={() => removeAnswer(question.id, answer.id)} aria-label={`Remover resposta ${answerIndex + 1}`}>
-                          ×
-                        </button>
+                {question.type === 'image_identification' && (
+                  <div className="question-media-grid">
+                    <label className="quiz-field quiz-field-wide image-upload-box">
+                      <span>Imagem da pergunta</span>
+                      <input type="file" accept="image/*" onChange={(event) => handleImageChange(question.id, event)} />
+                      {question.imagePreview ? (
+                        <img src={question.imagePreview} alt={question.imageAlt || 'Prévia da imagem'} className="question-preview" />
+                      ) : (
+                        <span className="image-upload-placeholder">Selecione uma imagem da sua máquina</span>
                       )}
-                    </div>
-                  ))}
-                </div>
+                      {question.imagePath && !question.imageFile && <small>Selecione outra imagem para substituir a atual.</small>}
+                    </label>
 
-                <button type="button" className="add-answer-button" onClick={() => addAnswer(question.id)}>
-                  + Adicionar outra resposta
-                </button>
+                    <label className="quiz-field quiz-field-wide">
+                      <span>Texto alternativo da imagem</span>
+                      <input
+                        value={question.imageAlt}
+                        onChange={(event) => updateQuestion(question.id, 'imageAlt', event.target.value)}
+                        maxLength={250}
+                        placeholder="Descreva a imagem"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {question.type === 'multiple_choice' && (
+                  <div className="multiple-choice-grid">
+                    {question.options.map((option, optionIndex) => (
+                      <div className="multiple-choice-option" key={`${question.id}-option-${optionIndex}`}>
+                        <label className="quiz-field quiz-field-wide">
+                          <span>Alternativa {optionIndex + 1}</span>
+                          <input
+                            value={option}
+                            onChange={(event) => updateQuestionOption(question.id, optionIndex, event.target.value)}
+                            placeholder={`Alternativa ${optionIndex + 1}`}
+                          />
+                        </label>
+                        <input
+                          type="radio"
+                          name={`correct-option-${question.id}`}
+                          checked={question.correctOptionIndex === optionIndex}
+                          onChange={() => updateQuestion(question.id, 'correctOptionIndex', optionIndex)}
+                          aria-label={`Marcar alternativa ${optionIndex + 1} como correta`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {question.type !== 'multiple_choice' && (
+                  <>
+                    <div className="quiz-answer-editor">
+                      {question.answers.map((answer, answerIndex) => (
+                        <div className="quiz-answer-row" key={answer.id}>
+                          <span className="quiz-answer-number">{String(answerIndex + 1).padStart(2, '0')}</span>
+                          <label className="quiz-field quiz-field-wide">
+                            <span>Respostas aceitas <small>(separadas por vírgula)</small></span>
+                            <input
+                              value={answer.acceptedAnswers}
+                              onChange={(event) => updateAnswer(question.id, answer.id, event.target.value)}
+                              placeholder="Ex.: palato duro, palato ósseo, palato"
+                            />
+                          </label>
+                          {question.answers.length > 1 && (
+                            <button type="button" className="remove-answer-button" onClick={() => removeAnswer(question.id, answer.id)} aria-label={`Remover resposta ${answerIndex + 1}`}>
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <button type="button" className="add-answer-button" onClick={() => addAnswer(question.id)}>
+                      + Adicionar outra resposta
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>
