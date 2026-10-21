@@ -25,6 +25,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
   const [originalImages, setOriginalImages] = useState([]);
   const [pendingPin, setPendingPin] = useState(null);
   const [pinLabel, setPinLabel] = useState('');
+  const [pinAcceptedAnswers, setPinAcceptedAnswers] = useState('');
   const [pinDialogError, setPinDialogError] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(isEditing);
@@ -47,7 +48,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
       setError('');
       const { data, error: fetchError } = await supabase
         .from('structure_visualizations')
-        .select('id, title, description, structure_images(id, view_name, image_path, position, structure_pins(id, label, x_position, y_position))')
+        .select('id, title, description, structure_images(id, view_name, image_path, position, structure_pins(id, label, accepted_answers, x_position, y_position))')
         .eq('id', visualizationId)
         .single();
 
@@ -71,6 +72,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
         const pins = (image.structure_pins ?? []).map((pin) => ({
           id: pin.id,
           label: pin.label,
+          accepted_answers: pin.accepted_answers ?? '',
           x_position: Number(pin.x_position),
           y_position: Number(pin.y_position),
         }));
@@ -139,6 +141,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
     const y = Math.min(100, Math.max(0, ((event.clientY - bounds.top) / bounds.height) * 100));
     setPendingPin({ viewId, x, y, pinId: null });
     setPinLabel('');
+    setPinAcceptedAnswers('');
     setPinDialogError('');
   };
 
@@ -146,6 +149,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
     event.stopPropagation();
     setPendingPin({ viewId, pinId: pin.id });
     setPinLabel(pin.label);
+    setPinAcceptedAnswers(pin.accepted_answers ?? '');
     setPinDialogError('');
   };
 
@@ -157,7 +161,12 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
     if (pendingPin.pinId) {
       setViews((currentViews) => currentViews.map((view) => (
         view.id === pendingPin.viewId
-          ? { ...view, pins: view.pins.map((pin) => pin.id === pendingPin.pinId ? { ...pin, label } : pin) }
+          ? {
+              ...view,
+              pins: view.pins.map((pin) => pin.id === pendingPin.pinId
+                ? { ...pin, label, accepted_answers: pinAcceptedAnswers.trim() }
+                : pin),
+            }
           : view
       )));
     } else {
@@ -168,6 +177,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
               pins: [...view.pins, {
                 id: crypto.randomUUID(),
                 label,
+                accepted_answers: pinAcceptedAnswers.trim(),
                 x_position: Number(pendingPin.x.toFixed(2)),
                 y_position: Number(pendingPin.y.toFixed(2)),
               }],
@@ -177,6 +187,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
     }
     setPendingPin(null);
     setPinLabel('');
+    setPinAcceptedAnswers('');
   };
 
   const deletePinFromDialog = () => {
@@ -188,6 +199,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
     )));
     setPendingPin(null);
     setPinLabel('');
+    setPinAcceptedAnswers('');
   };
 
   const saveVisualization = async (event) => {
@@ -291,10 +303,11 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
         }
 
         if (view.pins.length > 0) {
-          const pinRows = view.pins.map(({ id, label, x_position, y_position }) => ({
+          const pinRows = view.pins.map(({ id, label, accepted_answers, x_position, y_position }) => ({
             id,
             image_id: imageId,
             label,
+            accepted_answers: accepted_answers ?? '',
             x_position,
             y_position,
           }));
@@ -537,7 +550,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
             <h2 id="visualization-pin-title">{pendingPin.pinId ? 'Editar estrutura' : 'Nova estrutura'}</h2>
             <p>{pendingPin.pinId ? 'Altere o nome do pin ou exclua este marcador.' : 'Informe o nome que será associado a este ponto da imagem.'}</p>
             <label className="quiz-field">
-              <span>Estrutura</span>
+              <span>Nome da estrutura</span>
               <input
                 autoFocus
                 value={pinLabel}
@@ -548,6 +561,15 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
                 maxLength={120}
                 required
                 placeholder="Ex.: Glabela"
+              />
+            </label>
+            <label className="quiz-field visualization-pin-accepted-field">
+              <span>Respostas aceitas <small>(separadas por vírgula)</small></span>
+              <input
+                value={pinAcceptedAnswers}
+                onChange={(event) => setPinAcceptedAnswers(event.target.value)}
+                maxLength={1000}
+                placeholder="Ex.: glabela, glabellar region"
               />
             </label>
             {pinDialogError && <p className="quiz-form-error" role="alert">{pinDialogError}</p>}

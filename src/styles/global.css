@@ -86,6 +86,9 @@ h1 em, h2 em { font-family: 'Playfair Display', serif; font-weight: 600; letter-
 .visualization-viewer-heading h1 { margin: 0 0 14px; font-size: clamp(38px, 5vw, 58px); }
 .visualization-viewer-heading p:not(.eyebrow) { margin: 0 auto 16px; color: var(--muted); font-size: 14px; line-height: 1.7; }
 .visualization-viewer-heading small { color: var(--muted); font-size: 11px; }
+.visualization-viewer-actions { display: flex; justify-content: center; margin: 0 auto 20px; }
+.visualization-test-button { box-shadow: 0 8px 22px rgba(228,119,90,.2); }
+.visualization-test-button:disabled { cursor: not-allowed; opacity: .55; transform: none; }
 .visualization-view-tabs { display: flex; justify-content: center; flex-wrap: wrap; gap: 9px; margin: 0 auto 20px; }
 .visualization-view-tab { min-height: 40px; padding: 0 16px; border: 1px solid var(--line); background: var(--cream); color: var(--muted); font-size: 11px; font-weight: 800; transition: color .18s, border-color .18s, background .18s; }
 .visualization-view-tab:hover, .visualization-view-tab.active { border-color: var(--teal); background: rgba(111,193,206,.1); color: var(--teal); }
@@ -105,6 +108,16 @@ h1 em, h2 em { font-family: 'Playfair Display', serif; font-weight: 600; letter-
 .visualization-viewer-pin:hover .visualization-viewer-pin-label,
 .visualization-viewer-pin:focus-visible .visualization-viewer-pin-label,
 .visualization-viewer-pin.is-active .visualization-viewer-pin-label { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+.visualization-test-pin { cursor: default; }
+.visualization-test-pin .visualization-viewer-pin-dot { width: 24px; height: 24px; background: var(--teal); box-shadow: 0 0 0 7px rgba(111,193,206,.25), 0 2px 8px rgba(0,0,0,.45); }
+.visualization-test-form { width: min(100%, 720px); margin: 24px auto 0; padding: 26px; border: 1px solid var(--line); background: var(--cream); }
+.visualization-test-form > label { display: block; margin-bottom: 12px; font-size: 17px; font-weight: 800; }
+.visualization-test-form > input { width: 100%; min-height: 48px; padding: 10px 13px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: 500 14px 'Manrope', sans-serif; }
+.visualization-test-form > input::placeholder { color: var(--muted); }
+.visualization-test-form > input.visualization-test-input.correct { border-color: #65a370; background: rgba(67, 145, 85, .28); color: #baf3c5; box-shadow: inset 0 0 0 1px rgba(101,163,112,.55); }
+.visualization-test-form > input.visualization-test-input.incorrect { border-color: #e4775a; background: rgba(190, 68, 54, .28); color: #ffd0c5; box-shadow: inset 0 0 0 1px rgba(228,119,90,.55); }
+.visualization-test-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+.visualization-test-form .feedback { margin-top: 18px; }
 .visualization-pin-canvas { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--line); background: var(--paper); cursor: crosshair; }
 .visualization-pin-canvas > img { display: block; width: 100%; height: auto; }
 .visualization-view-editor-list { display: grid; gap: 18px; }
@@ -121,6 +134,7 @@ h1 em, h2 em { font-family: 'Playfair Display', serif; font-weight: 600; letter-
 .visualization-pin-modal h2 { margin: 0 0 8px; font-size: 24px; }
 .visualization-pin-modal > p { margin: 0 0 24px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .visualization-pin-modal .quiz-field input { margin-top: 8px; }
+.visualization-pin-accepted-field { margin-top: 18px; }
 .quiz-edit-button { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; }
 .game-card { min-height: 275px; display: flex; flex-direction: column; justify-content: space-between; padding: 25px; background: var(--cream); border: 1px solid var(--line); transition: transform .25s, box-shadow .25s; }
 .game-card:hover { transform: translateY(-5px); box-shadow: 0 14px 30px rgba(24,35,33,.08); }
