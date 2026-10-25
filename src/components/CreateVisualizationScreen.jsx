@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 const createView = () => ({
@@ -33,11 +33,24 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const previewUrls = useRef(new Set());
+  const pinCanvasRefs = useRef(new Map());
+  const pinDialogScrollY = useRef(0);
+  const pendingPinFocus = useRef(null);
 
   useEffect(() => () => {
     previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrls.current.clear();
   }, []);
+
+  useLayoutEffect(() => {
+    if (pendingPin) return;
+    const restore = pendingPinFocus.current;
+    if (!restore) return;
+
+    pinCanvasRefs.current.get(restore.viewId)?.focus({ preventScroll: true });
+    window.scrollTo({ top: restore.scrollY, left: window.scrollX, behavior: 'instant' });
+    pendingPinFocus.current = null;
+  }, [pendingPin]);
 
   useEffect(() => {
     if (!visualizationId) return undefined;
@@ -137,6 +150,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
     const bounds = event.currentTarget.getBoundingClientRect();
     if (!bounds.width || !bounds.height) return;
 
+    pinDialogScrollY.current = window.scrollY;
     const x = Math.min(100, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * 100));
     const y = Math.min(100, Math.max(0, ((event.clientY - bounds.top) / bounds.height) * 100));
     setPendingPin({ viewId, x, y, pinId: null });
@@ -147,14 +161,34 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
 
   const openPinEditor = (event, viewId, pin) => {
     event.stopPropagation();
+    pinDialogScrollY.current = window.scrollY;
     setPendingPin({ viewId, pinId: pin.id });
     setPinLabel(pin.label);
     setPinAcceptedAnswers(pin.accepted_answers ?? '');
     setPinDialogError('');
   };
 
-  const savePinLabel = (event) => {
-    event.preventDefault();
+  const closePinDialog = () => {
+    if (!pendingPin) return;
+    pendingPinFocus.current = {
+      viewId: pendingPin.viewId,
+      scrollY: pinDialogScrollY.current,
+    };
+    setPendingPin(null);
+    setPinLabel('');
+    setPinAcceptedAnswers('');
+    setPinDialogError('');
+  };
+
+  const commitPinLabel = () => {
+    if (!pinLabel.trim()) {
+      setPinDialogError('Informe o nome da estrutura.');
+      return;
+    }
+    savePinLabel();
+  };
+
+  const savePinLabel = () => {
     const label = pinLabel.trim();
     if (!label || !pendingPin) return;
 
@@ -185,9 +219,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
           : view
       )));
     }
-    setPendingPin(null);
-    setPinLabel('');
-    setPinAcceptedAnswers('');
+    closePinDialog();
   };
 
   const deletePinFromDialog = () => {
@@ -197,9 +229,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
         ? { ...view, pins: view.pins.filter((pin) => pin.id !== pendingPin.pinId) }
         : view
     )));
-    setPendingPin(null);
-    setPinLabel('');
-    setPinAcceptedAnswers('');
+    closePinDialog();
   };
 
   const saveVisualization = async (event) => {
@@ -494,7 +524,14 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
                 {view.imagePreview && (
                   <>
                     <p className="visualization-pin-hint">Clique na imagem para adicionar pins. Clique em um pin para editar ou excluir.</p>
-                    <div className="visualization-pin-canvas">
+                    <div
+                      className="visualization-pin-canvas"
+                      ref={(element) => {
+                        if (element) pinCanvasRefs.current.set(view.id, element);
+                        else pinCanvasRefs.current.delete(view.id);
+                      }}
+                      tabIndex={-1}
+                    >
                       <img
                         src={view.imagePreview}
                         alt={`Pré-visualização da ${view.viewName || `vista ${viewIndex + 1}`}`}
@@ -540,12 +577,11 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
 
       {pendingPin && (
         <div className="visualization-modal-backdrop" role="presentation">
-          <form
+          <section
             className="visualization-pin-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="visualization-pin-title"
-            onSubmit={savePinLabel}
           >
             <h2 id="visualization-pin-title">{pendingPin.pinId ? 'Editar estrutura' : 'Nova estrutura'}</h2>
             <p>{pendingPin.pinId ? 'Altere o nome do pin ou exclua este marcador.' : 'Informe o nome que será associado a este ponto da imagem.'}</p>
@@ -561,6 +597,17 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
                 maxLength={120}
                 required
                 placeholder="Ex.: Glabela"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    commitPinLabel();
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closePinDialog();
+                  }
+                }}
               />
             </label>
             <label className="quiz-field visualization-pin-accepted-field">
@@ -579,12 +626,16 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
                   Excluir pin
                 </button>
               )}
-              <button type="button" className="text-button muted" onClick={() => setPendingPin(null)}>Cancelar</button>
-              <button type="submit" className="primary-button">
+              <button type="button" className="text-button muted" onClick={closePinDialog}>Cancelar</button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={commitPinLabel}
+              >
                 {pendingPin.pinId ? 'Salvar nome' : 'Adicionar pin'} <span>{pendingPin.pinId ? '✓' : '+'}</span>
               </button>
             </div>
-          </form>
+          </section>
         </div>
       )}
     </main>
