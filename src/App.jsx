@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Header from './components/Header';
 import GameSettings from './components/GameSettings';
 import GameScreen from './components/GameScreen';
@@ -23,6 +23,67 @@ const games = [
   { id: 'boca-e-faringe', title: 'Boca e Faringe', description: 'Questionário com imagens sobre a cavidade oral e o vestibulo.', icon: '◍', status: 'disponível', customQuiz: bocaFaringeQuestions },
   { id: 'arthrology', title: 'Artrologia', description: 'Acesse o questionário de artrologia e teste seus conhecimentos.', icon: '◌', status: 'disponível', externalUrl: 'https://lembro.app/collections/978a8485-8a10-4f61-ac4d-99e8068ab22b' },
 ];
+
+function getAppRoute(pathname) {
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const appPath = basePath && (pathname === basePath || pathname.startsWith(`${basePath}/`))
+    ? pathname.slice(basePath.length) || '/'
+    : pathname;
+  const path = appPath.replace(/\/+$/, '') || '/';
+  const decodePathPart = (part) => {
+    try {
+      return decodeURIComponent(part);
+    } catch {
+      return '';
+    }
+  };
+  const segments = path.split('/').filter(Boolean).map(decodePathPart);
+
+  if (path === '/' || path === '/questionarios') return { screen: 'home' };
+  if (segments[0] === 'visualizacoes' && segments.length === 1) {
+    return { screen: 'visualizations' };
+  }
+  if (segments[0] === 'visualizacoes' && segments[1]) {
+    return { screen: 'visualization-viewer', visualizationId: segments[1] };
+  }
+  if (segments[0] === 'questionarios' && segments[1]) {
+    const game = games.find((item) => item.id === segments[1] && item.customQuiz);
+    return game
+      ? { screen: 'image-quiz-order', game }
+      : { screen: 'quiz-loading', quizSlug: segments[1] };
+  }
+  if (segments[0] === 'jogos' && segments[1]) {
+    const game = games.find((item) => item.id === segments[1]);
+    if (game?.guided) return { screen: 'guided-review', game };
+    if (game?.customQuiz) return { screen: 'image-quiz-order', game };
+    if (game && !game.externalUrl) return { screen: 'settings', game };
+  }
+
+  return { screen: 'home' };
+}
+
+function withAppBasePath(path) {
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+  return `${basePath}${path}`;
+}
+
+function getPathForScreen(screen, selectedGame, visualizationId, quizSlug) {
+  if (screen === 'visualizations') return withAppBasePath('/visualizacoes');
+  if (screen === 'visualization-viewer' && visualizationId) {
+    return withAppBasePath(`/visualizacoes/${encodeURIComponent(visualizationId)}`);
+  }
+  if (['quiz-loading', 'quiz-error'].includes(screen) && quizSlug) {
+    return withAppBasePath(`/questionarios/${encodeURIComponent(quizSlug)}`);
+  }
+  if (['image-quiz-order', 'image-quiz', 'image-quiz-result'].includes(screen) && selectedGame?.customQuiz) {
+    const quizId = selectedGame.quizRecord?.slug || selectedGame.id;
+    return withAppBasePath(`/questionarios/${encodeURIComponent(quizId)}`);
+  }
+  if (['settings', 'game', 'result', 'guided-review'].includes(screen) && selectedGame?.id) {
+    return withAppBasePath(`/jogos/${encodeURIComponent(selectedGame.id)}`);
+  }
+  return withAppBasePath('/');
+}
 
 function Home({ games, onPlay, onPlayCreatedQuiz }) {
   const [createdQuizzes, setCreatedQuizzes] = useState([]);
@@ -237,18 +298,22 @@ function ImageQuizOrderScreen({ game, onBack, onStart, onEdit, canEdit }) {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState('home');
+  const [initialRoute] = useState(() => getAppRoute(window.location.pathname));
+  const [screen, setScreen] = useState(initialRoute.screen);
   const [lightTheme, setLightTheme] = useState(false);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [quizLoadError, setQuizLoadError] = useState('');
   const [imageQuizResult, setImageQuizResult] = useState(null);
   const [customQuizSession, setCustomQuizSession] = useState(null);
   const game = useAnatomyGame();
   const [settings, setSettings] = useState(null);
-  const [selectedGame, setSelectedGame] = useState(games[0]);
+  const [selectedGame, setSelectedGame] = useState(initialRoute.game ?? games[0]);
   const [quizToEdit, setQuizToEdit] = useState(null);
-  const [selectedVisualizationId, setSelectedVisualizationId] = useState(null);
+  const [selectedVisualizationId, setSelectedVisualizationId] = useState(initialRoute.visualizationId ?? null);
+  const [pendingQuizSlug, setPendingQuizSlug] = useState(initialRoute.quizSlug ?? '');
+  const routeSyncReady = useRef(false);
 
   useEffect(() => {
     let isCurrent = true;
@@ -271,6 +336,35 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = getAppRoute(window.location.pathname);
+      setScreen(route.screen);
+      setSelectedGame(route.game ?? games[0]);
+      setSelectedVisualizationId(route.visualizationId ?? null);
+      setPendingQuizSlug(route.quizSlug ?? '');
+      setQuizLoadError('');
+      setCustomQuizSession(null);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    const path = getPathForScreen(screen, selectedGame, selectedVisualizationId, pendingQuizSlug);
+    if (!routeSyncReady.current) {
+      routeSyncReady.current = true;
+      if (window.location.pathname !== path) {
+        window.history.replaceState(null, '', path);
+      }
+      return;
+    }
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, '', path);
+    }
+  }, [screen, selectedGame, selectedVisualizationId, pendingQuizSlug]);
 
   useEffect(() => {
     if (!authLoading && !user && screen === 'create-quiz') {
@@ -308,7 +402,7 @@ export default function App() {
     setScreen('home');
   };
 
-  const playCreatedQuiz = async (quiz) => {
+  const playCreatedQuiz = async (quiz, isCurrent = () => true) => {
     const { data: quizTree, error } = await supabase
       .from('quizzes')
       .select('*, quiz_questions(*, quiz_answers(*))')
@@ -382,12 +476,39 @@ export default function App() {
       customQuiz: customQuestions,
     };
 
+    if (!isCurrent()) return;
     setSelectedGame(createdQuizGame);
     setImageQuizResult(null);
+    setCustomQuizSession(null);
+    setPendingQuizSlug('');
+    setQuizLoadError('');
     setScreen('image-quiz-order');
   };
+
+  useEffect(() => {
+    if (authLoading || !pendingQuizSlug) return undefined;
+    let isCurrent = true;
+
+    playCreatedQuiz({ slug: pendingQuizSlug }, () => isCurrent).catch((error) => {
+      if (!isCurrent) return;
+      setQuizLoadError(error.message || 'Não foi possível carregar o questionário.');
+      setScreen('quiz-error');
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [authLoading, pendingQuizSlug]);
+
   const startGame = (nextSettings) => { setSettings(nextSettings); const structures = selectedGame.structures.filter((item) => nextSettings.selectedRegions.includes(item.regiao)).map((item) => ({ ...item, modelFile: selectedGame.modelFile })); game.start({ ...nextSettings, promptNoun: selectedGame.promptNoun, modelFile: selectedGame.modelFile }, structures); setScreen('game'); };
-  const goHome = () => { game.reset(); setImageQuizResult(null); setCustomQuizSession(null); setScreen('home'); };
+  const goHome = () => {
+    game.reset();
+    setImageQuizResult(null);
+    setCustomQuizSession(null);
+    setPendingQuizSlug('');
+    setQuizLoadError('');
+    setScreen('home');
+  };
   const editCreatedQuiz = () => {
     if (!user) return;
     setQuizToEdit({
@@ -408,17 +529,16 @@ export default function App() {
       window.open(nextGame.externalUrl, '_blank', 'noopener,noreferrer');
       return;
     }
+    setSelectedGame(nextGame);
     if (nextGame.guided) {
       setScreen('guided-review');
       return;
     }
     if (nextGame.customQuiz) {
-      setSelectedGame(nextGame);
       setImageQuizResult(null);
       setScreen('image-quiz-order');
       return;
     }
-    setSelectedGame(nextGame);
     setScreen('settings');
   };
   const customResultGame = imageQuizResult ? {
@@ -435,16 +555,23 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell ${lightTheme ? 'light-theme' : ''}`}>
+    <div className={`app-shell ${lightTheme ? 'light-theme' : ''} ${screen === 'visualization-viewer' ? 'visualization-viewer-shell' : ''}`}>
       <Header
         onHome={goHome}
-        onVisualizations={() => setScreen('visualizations')}
+        onVisualizations={() => {
+          setPendingQuizSlug('');
+          setScreen('visualizations');
+        }}
         onCreateQuiz={() => {
           if (!user) return;
+          setPendingQuizSlug('');
           setQuizToEdit(null);
           setScreen('create-quiz');
         }}
-        onLogin={() => setScreen('login')}
+        onLogin={() => {
+          setPendingQuizSlug('');
+          setScreen('login');
+        }}
         onSignOut={signOut}
         isAuthenticated={Boolean(user)}
         lightTheme={lightTheme}
@@ -452,6 +579,17 @@ export default function App() {
       />
       {authError && <p className="created-quizzes-message created-quizzes-error auth-message" role="alert">{authError}</p>}
       {screen === 'home' && <Home games={games} onPlay={openSettings} onPlayCreatedQuiz={playCreatedQuiz} />}
+      {screen === 'quiz-loading' && (
+        <main className="game-page page-enter">
+          <p className="created-quizzes-message" role="status">Carregando questionário...</p>
+        </main>
+      )}
+      {screen === 'quiz-error' && (
+        <main className="game-page page-enter">
+          <p className="created-quizzes-message created-quizzes-error" role="alert">{quizLoadError}</p>
+          <button type="button" className="back-link" onClick={goHome}>← Voltar ao início</button>
+        </main>
+      )}
       {screen === 'visualizations' && (
         <VisualizationsScreen
           canCreate={Boolean(user)}
