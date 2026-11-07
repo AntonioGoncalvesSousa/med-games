@@ -1,6 +1,5 @@
 export default function Header({
   onHome,
-  onVisualizations,
   onCreateQuiz,
   onLogin,
   onSignOut,
@@ -15,10 +14,9 @@ export default function Header({
         <span>MED<span className="brand-accent">/</span>GAMES</span>
       </button>
       <div className="header-actions">
-        <button className="auth-nav-button" onClick={onVisualizations}>Visualizações</button>
         {isAuthenticated ? (
           <>
-            <button className="create-quiz-nav" onClick={onCreateQuiz}>+ Criar questionário</button>
+            <button className="create-quiz-nav" onClick={onCreateQuiz}>+ Criar conteúdo</button>
             <button className="auth-nav-button" onClick={onSignOut}>Sair</button>
           </>
         ) : (

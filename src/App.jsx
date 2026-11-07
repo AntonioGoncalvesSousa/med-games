@@ -10,9 +10,11 @@ import ImageQuizScreen from './components/ImageQuizScreen';
 import GuidedReviewScreen from './components/GuidedReviewScreen';
 import { guidedHeadReview } from './data/guidedHeadReview';
 import CreateQuizScreen from './components/CreateQuizScreen';
+import ContentCard from './components/ContentCard';
+import CreateContentScreen from './components/CreateContentScreen';
+import CreateExternalLinkScreen from './components/CreateExternalLinkScreen';
 import LoginScreen from './components/LoginScreen';
 import CreateVisualizationScreen from './components/CreateVisualizationScreen';
-import VisualizationsScreen from './components/VisualizationsScreen';
 import VisualizationViewer from './components/VisualizationViewer';
 import { supabase } from './lib/supabaseClient';
 
@@ -40,9 +42,6 @@ function getAppRoute(pathname) {
   const segments = path.split('/').filter(Boolean).map(decodePathPart);
 
   if (path === '/' || path === '/questionarios') return { screen: 'home' };
-  if (segments[0] === 'visualizacoes' && segments.length === 1) {
-    return { screen: 'visualizations' };
-  }
   if (segments[0] === 'visualizacoes' && segments[1]) {
     return { screen: 'visualization-viewer', visualizationId: segments[1] };
   }
@@ -68,7 +67,6 @@ function withAppBasePath(path) {
 }
 
 function getPathForScreen(screen, selectedGame, visualizationId, quizSlug) {
-  if (screen === 'visualizations') return withAppBasePath('/visualizacoes');
   if (screen === 'visualization-viewer' && visualizationId) {
     return withAppBasePath(`/visualizacoes/${encodeURIComponent(visualizationId)}`);
   }
@@ -85,51 +83,113 @@ function getPathForScreen(screen, selectedGame, visualizationId, quizSlug) {
   return withAppBasePath('/');
 }
 
-function Home({ games, onPlay, onPlayCreatedQuiz }) {
-  const [createdQuizzes, setCreatedQuizzes] = useState([]);
-  const [quizzesLoading, setQuizzesLoading] = useState(true);
-  const [quizzesError, setQuizzesError] = useState('');
+const feedFilters = [
+  { id: 'all', label: 'Todos' },
+  { id: 'quiz', label: 'Questionários' },
+  { id: 'visualization', label: 'Visualizações' },
+  { id: 'external_link', label: 'Links Externos' },
+];
+
+function Home({ games, onPlay, onPlayCreatedQuiz, onOpenVisualization }) {
+  const [feedItems, setFeedItems] = useState([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [feedError, setFeedError] = useState('');
+  const [search, setSearch] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
   const [launchingQuizId, setLaunchingQuizId] = useState(null);
   const [launchError, setLaunchError] = useState('');
 
   useEffect(() => {
     let isCurrent = true;
 
-    const loadCreatedQuizzes = async () => {
-      const { data, error } = await supabase
-        .from('quizzes')
-        .select('id, slug, title, description, created_at')
-        .order('created_at', { ascending: false });
+    const loadFeed = async () => {
+      try {
+        const [quizResult, visualizationResult] = await Promise.all([
+          supabase
+            .from('quizzes')
+            .select('id, slug, title, description, created_at, content_type, external_url')
+            .eq('status', 'published'),
+          supabase
+            .from('structure_visualizations')
+            .select('id, title, description, created_at, structure_images(id, view_name, image_path, position)'),
+        ]);
 
-      if (!isCurrent) return;
+        if (!isCurrent) return;
 
-      if (error) {
-        setQuizzesError(`Não foi possível carregar os questionários: ${error.message}`);
-        setCreatedQuizzes([]);
-      } else {
-        setCreatedQuizzes(data ?? []);
-        setQuizzesError('');
+        const errors = [];
+        if (quizResult.error) errors.push(`questionários: ${quizResult.error.message}`);
+        if (visualizationResult.error) errors.push(`visualizações: ${visualizationResult.error.message}`);
+
+        const items = [
+          ...(quizResult.data ?? []).map((quiz) => ({
+            id: `${quiz.content_type === 'external_link' ? 'external' : 'quiz'}-${quiz.id}`,
+            slug: quiz.slug,
+            title: quiz.title,
+            description: quiz.description,
+            createdAt: quiz.created_at,
+            type: quiz.content_type === 'external_link' ? 'external_link' : 'quiz',
+            externalUrl: quiz.external_url ?? null,
+          })),
+          ...(visualizationResult.data ?? []).map((visualization) => ({
+            id: `visualization-${visualization.id}`,
+            visualizationId: visualization.id,
+            title: visualization.title,
+            description: visualization.description,
+            createdAt: visualization.created_at,
+            type: 'visualization',
+            images: [...(visualization.structure_images ?? [])]
+              .sort((first, second) => first.position - second.position),
+            externalUrl: null,
+          })),
+          ...games.filter((game) => game.externalUrl).map((game) => ({
+            id: `external-${game.id}`,
+            title: game.title,
+            description: game.description,
+            createdAt: null,
+            type: 'external_link',
+            externalUrl: game.externalUrl,
+          })),
+        ];
+        const timestamp = (date) => {
+          const value = Date.parse(date ?? '');
+          return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+        };
+
+        setFeedItems(items.sort((first, second) => timestamp(second.createdAt) - timestamp(first.createdAt)));
+        setFeedError(errors.length ? `Não foi possível carregar ${errors.join(' e ')}.` : '');
+      } catch (error) {
+        if (!isCurrent) return;
+        setFeedError(`Não foi possível carregar o feed: ${error.message || 'erro de conexão.'}`);
+      } finally {
+        if (isCurrent) setFeedLoading(false);
       }
-
-      setQuizzesLoading(false);
     };
 
-    loadCreatedQuizzes();
+    loadFeed();
     return () => { isCurrent = false; };
-  }, []);
+  }, [games]);
 
   const scrollToGames = () => document.getElementById('games-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  const launchCreatedQuiz = async (quiz) => {
-    setLaunchingQuizId(quiz.id);
+  const openFeedItem = async (item) => {
+    if (item.type === 'visualization') {
+      onOpenVisualization(item);
+      return;
+    }
+
+    setLaunchingQuizId(item.id);
     setLaunchError('');
     try {
-      await onPlayCreatedQuiz(quiz);
+      await onPlayCreatedQuiz(item);
     } catch (error) {
       setLaunchError(error.message || 'Não foi possível iniciar o questionário.');
     } finally {
       setLaunchingQuizId(null);
     }
   };
+  const filteredItems = feedItems.filter((item) => (
+    (activeFilter === 'all' || item.type === activeFilter)
+    && item.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+  ));
 
   const renderGameCard = (game) => (
     <article
@@ -161,8 +221,8 @@ function Home({ games, onPlay, onPlayCreatedQuiz }) {
       </div>
     </article>
   );
-  const firstSemesterGames = games.filter((game) => game.id !== 'boca-e-faringe' && game.id !== 'guided-head-review');
-  const secondSemesterGames = games.filter((game) => game.id === 'boca-e-faringe' || game.id === 'guided-head-review');
+  const firstSemesterGames = games.filter((game) => !game.externalUrl && game.id !== 'boca-e-faringe' && game.id !== 'guided-head-review');
+  const secondSemesterGames = games.filter((game) => !game.externalUrl && (game.id === 'boca-e-faringe' || game.id === 'guided-head-review'));
 
   return (
     <main className="home-page page-enter">
@@ -186,61 +246,51 @@ function Home({ games, onPlay, onPlayCreatedQuiz }) {
         <div className="section-intro second-semester"><p className="eyebrow">2° SEMESTRE</p><h2>Boca e Faringe</h2></div>
         <div className="game-card-grid second-semester-grid">{secondSemesterGames.map(renderGameCard)}</div>
         <div className="section-intro created-quizzes-heading">
-          <p className="eyebrow">SUPABASE</p>
-          <h2>Questionários criados</h2>
+          <p className="eyebrow">BIBLIOTECA</p>
+          <h2>Explore para <em>estudar.</em></h2>
         </div>
-        {quizzesLoading && <p className="created-quizzes-message" role="status">Carregando questionários...</p>}
-        {quizzesError && <p className="created-quizzes-message created-quizzes-error" role="alert">{quizzesError}</p>}
-        {!quizzesLoading && !quizzesError && createdQuizzes.length === 0 && (
-          <p className="created-quizzes-message">Ainda não há questionários criados.</p>
-        )}
-        {!quizzesLoading && !quizzesError && createdQuizzes.length > 0 && (
-          <div className="game-card-grid">
-            {createdQuizzes.map((quiz) => (
-              <article
-                className="game-card interactive-game-card"
-                key={quiz.id}
-                role="button"
-                tabIndex={0}
-                aria-disabled={launchingQuizId === quiz.id}
-                onClick={(event) => {
-                  if (event.target.closest('button') || launchingQuizId === quiz.id) return;
-                  launchCreatedQuiz(quiz);
-                }}
-                onKeyDown={(event) => {
-                  if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-                  event.preventDefault();
-                  if (launchingQuizId !== quiz.id) launchCreatedQuiz(quiz);
-                }}
+        <div className="feed-controls">
+          <label className="feed-search">
+            <span className="visually-hidden">Pesquisar pelo título</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Pesquisar pelo título..."
+            />
+            <span aria-hidden="true">⌕</span>
+          </label>
+          <div className="feed-filters" role="tablist" aria-label="Filtrar itens do feed">
+            {feedFilters.map((filter) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeFilter === filter.id}
+                className={`feed-filter${activeFilter === filter.id ? ' active' : ''}`}
+                key={filter.id}
+                onClick={() => setActiveFilter(filter.id)}
               >
-                <div className="card-top">
-                  <span className="game-icon">◍</span>
-                  <span className="available"><i />Questionário</span>
-                </div>
-                <div>
-                  <h3>{quiz.title}</h3>
-                  <p>{quiz.description || 'Questionário de identificação anatômica.'}</p>
-                </div>
-                <div
-                  className="card-link"
-                  role="button"
-                  tabIndex={0}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (launchingQuizId !== quiz.id) launchCreatedQuiz(quiz);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      if (launchingQuizId !== quiz.id) launchCreatedQuiz(quiz);
-                    }
-                  }}
-                >
-                  <span>{launchingQuizId === quiz.id ? 'Carregando...' : 'Jogar agora'}</span>
-                  <span>↗</span>
-                </div>
-              </article>
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {feedLoading && <p className="created-quizzes-message" role="status">Carregando questionários e visualizações...</p>}
+        {feedError && <p className="created-quizzes-message created-quizzes-error" role="alert">{feedError}</p>}
+        {!feedLoading && filteredItems.length === 0 && (
+          <p className="created-quizzes-message">
+            {feedItems.length === 0 ? 'Ainda não há conteúdos disponíveis.' : 'Nenhum conteúdo corresponde à pesquisa e aos filtros.'}
+          </p>
+        )}
+        {!feedLoading && filteredItems.length > 0 && (
+          <div className="game-card-grid feed-grid">
+            {filteredItems.map((item) => (
+              <ContentCard
+                key={item.id}
+                item={item}
+                onOpen={openFeedItem}
+                loading={launchingQuizId === item.id}
+              />
             ))}
           </div>
         )}
@@ -371,11 +421,14 @@ export default function App() {
       setQuizToEdit(null);
       setScreen('home');
     }
+    if (!authLoading && !user && ['create-content', 'create-external-link'].includes(screen)) {
+      setScreen('home');
+    }
     if (!authLoading && !user && screen === 'create-visualization') {
-      setScreen('visualizations');
+      setScreen('create-content');
     }
     if (!authLoading && !user && screen === 'edit-visualization') {
-      setScreen('visualizations');
+      setScreen('home');
     }
     if (user && screen === 'login') {
       setScreen('home');
@@ -558,15 +611,11 @@ export default function App() {
     <div className={`app-shell ${lightTheme ? 'light-theme' : ''} ${screen === 'visualization-viewer' ? 'visualization-viewer-shell' : ''}`}>
       <Header
         onHome={goHome}
-        onVisualizations={() => {
-          setPendingQuizSlug('');
-          setScreen('visualizations');
-        }}
         onCreateQuiz={() => {
           if (!user) return;
           setPendingQuizSlug('');
           setQuizToEdit(null);
-          setScreen('create-quiz');
+          setScreen('create-content');
         }}
         onLogin={() => {
           setPendingQuizSlug('');
@@ -578,7 +627,17 @@ export default function App() {
         onThemeChange={(event) => setLightTheme(event.target.checked)}
       />
       {authError && <p className="created-quizzes-message created-quizzes-error auth-message" role="alert">{authError}</p>}
-      {screen === 'home' && <Home games={games} onPlay={openSettings} onPlayCreatedQuiz={playCreatedQuiz} />}
+      {screen === 'home' && (
+        <Home
+          games={games}
+          onPlay={openSettings}
+          onPlayCreatedQuiz={playCreatedQuiz}
+          onOpenVisualization={(item) => {
+            setSelectedVisualizationId(item.visualizationId);
+            setScreen('visualization-viewer');
+          }}
+        />
+      )}
       {screen === 'quiz-loading' && (
         <main className="game-page page-enter">
           <p className="created-quizzes-message" role="status">Carregando questionário...</p>
@@ -590,43 +649,44 @@ export default function App() {
           <button type="button" className="back-link" onClick={goHome}>← Voltar ao início</button>
         </main>
       )}
-      {screen === 'visualizations' && (
-        <VisualizationsScreen
-          canCreate={Boolean(user)}
-          onOpen={(visualizationId) => {
-            setSelectedVisualizationId(visualizationId);
-            setScreen('visualization-viewer');
-          }}
-          onCreate={() => {
-            if (user) setScreen('create-visualization');
-          }}
-          onEdit={(visualizationId) => {
-            if (!user) return;
-            setSelectedVisualizationId(visualizationId);
-            setScreen('edit-visualization');
-          }}
-        />
-      )}
       {screen === 'visualization-viewer' && selectedVisualizationId && (
         <VisualizationViewer
           visualizationId={selectedVisualizationId}
-          onBack={() => setScreen('visualizations')}
+          onBack={goHome}
         />
       )}
       {screen === 'create-visualization' && user && (
         <CreateVisualizationScreen
-          onBack={() => setScreen('visualizations')}
-          onSaved={() => setScreen('visualizations')}
+          onBack={() => setScreen('create-content')}
+          onSaved={goHome}
         />
       )}
       {screen === 'edit-visualization' && user && selectedVisualizationId && (
         <CreateVisualizationScreen
           visualizationId={selectedVisualizationId}
-          onBack={() => setScreen('visualizations')}
-          onSaved={() => setScreen('visualizations')}
+          onBack={goHome}
+          onSaved={goHome}
         />
       )}
       {screen === 'login' && !user && <LoginScreen onBack={goHome} onLoginSuccess={handleLoginSuccess} />}
+      {screen === 'create-content' && user && (
+        <CreateContentScreen
+          onBack={goHome}
+          onCreateQuiz={() => {
+            setQuizToEdit(null);
+            setScreen('create-quiz');
+          }}
+          onCreateVisualization={() => setScreen('create-visualization')}
+          onCreateExternalLink={() => setScreen('create-external-link')}
+        />
+      )}
+      {screen === 'create-external-link' && user && (
+        <CreateExternalLinkScreen
+          userId={user.id}
+          onBack={() => setScreen('create-content')}
+          onSaved={goHome}
+        />
+      )}
       {screen === 'create-quiz' && user && <CreateQuizScreen quizToEdit={quizToEdit} onBack={goHome} />}
       {screen === 'settings' && <GameSettings game={selectedGame} onBack={goHome} onStart={startGame} />}
       {screen === 'guided-review' && <GuidedReviewScreen steps={guidedHeadReview} onExit={goHome} />}
