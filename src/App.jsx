@@ -23,7 +23,6 @@ const games = [
   { id: 'guess-muscle', title: 'Adivinhe o Músculo', description: 'Identifique músculos e seus compartimentos no modelo anatômico 3D.', icon: '✚', status: 'disponível', structures: muscleStructures, regions: muscleRegions, promptNoun: 'músculo', modelFile: 'muscles.glb' },
   { id: 'guided-head-review', title: 'Roteiro de Cabeça', description: 'Percorra os ossos e músculos do roteiro com visualização anatômica 3D.', icon: '◉', status: 'disponível', guided: true },
   { id: 'boca-e-faringe', title: 'Boca e Faringe', description: 'Questionário com imagens sobre a cavidade oral e o vestibulo.', icon: '◍', status: 'disponível', customQuiz: bocaFaringeQuestions },
-  { id: 'arthrology', title: 'Artrologia', description: 'Acesse o questionário de artrologia e teste seus conhecimentos.', icon: '◌', status: 'disponível', externalUrl: 'https://lembro.app/collections/978a8485-8a10-4f61-ac4d-99e8068ab22b' },
 ];
 
 function getAppRoute(pathname) {
@@ -90,7 +89,7 @@ const feedFilters = [
   { id: 'external_link', label: 'Links Externos' },
 ];
 
-function Home({ games, onPlay, onPlayCreatedQuiz, onOpenVisualization }) {
+function Home({ games, userId, onPlay, onPlayCreatedQuiz, onOpenVisualization, onEditItem }) {
   const [feedItems, setFeedItems] = useState([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
@@ -98,6 +97,8 @@ function Home({ games, onPlay, onPlayCreatedQuiz, onOpenVisualization }) {
   const [activeFilter, setActiveFilter] = useState('all');
   const [launchingQuizId, setLaunchingQuizId] = useState(null);
   const [launchError, setLaunchError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionLoadingId, setActionLoadingId] = useState(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -107,11 +108,11 @@ function Home({ games, onPlay, onPlayCreatedQuiz, onOpenVisualization }) {
         const [quizResult, visualizationResult] = await Promise.all([
           supabase
             .from('quizzes')
-            .select('id, slug, title, description, created_at, content_type, external_url')
+            .select('id, slug, title, description, created_at, content_type, external_url, owner_id')
             .eq('status', 'published'),
           supabase
             .from('structure_visualizations')
-            .select('id, title, description, created_at, structure_images(id, view_name, image_path, position)'),
+            .select('id, title, description, created_at, owner_id, structure_images(id, view_name, image_path, position)'),
         ]);
 
         if (!isCurrent) return;
@@ -123,15 +124,18 @@ function Home({ games, onPlay, onPlayCreatedQuiz, onOpenVisualization }) {
         const items = [
           ...(quizResult.data ?? []).map((quiz) => ({
             id: `${quiz.content_type === 'external_link' ? 'external' : 'quiz'}-${quiz.id}`,
+            databaseId: quiz.id,
             slug: quiz.slug,
             title: quiz.title,
             description: quiz.description,
             createdAt: quiz.created_at,
             type: quiz.content_type === 'external_link' ? 'external_link' : 'quiz',
             externalUrl: quiz.external_url ?? null,
+            ownerId: quiz.owner_id,
           })),
           ...(visualizationResult.data ?? []).map((visualization) => ({
             id: `visualization-${visualization.id}`,
+            databaseId: visualization.id,
             visualizationId: visualization.id,
             title: visualization.title,
             description: visualization.description,
@@ -139,6 +143,7 @@ function Home({ games, onPlay, onPlayCreatedQuiz, onOpenVisualization }) {
             type: 'visualization',
             images: [...(visualization.structure_images ?? [])]
               .sort((first, second) => first.position - second.position),
+            ownerId: visualization.owner_id,
             externalUrl: null,
           })),
           ...games.filter((game) => game.externalUrl).map((game) => ({
@@ -184,6 +189,45 @@ function Home({ games, onPlay, onPlayCreatedQuiz, onOpenVisualization }) {
       setLaunchError(error.message || 'Não foi possível iniciar o questionário.');
     } finally {
       setLaunchingQuizId(null);
+    }
+  };
+  const manageFeedItem = async (item, action) => {
+    if (!userId || item.ownerId !== userId) return;
+    setActionLoadingId(item.id);
+    setActionError('');
+
+    try {
+      if (action === 'delete') {
+        if (!window.confirm(`Excluir "${item.title}"? Esta ação não pode ser desfeita.`)) return;
+        const table = item.type === 'visualization' ? 'structure_visualizations' : 'quizzes';
+        const { data: deletedItem, error: deleteError } = await supabase
+          .from(table)
+          .delete()
+          .eq('id', item.databaseId)
+          .eq('owner_id', userId)
+          .select('id')
+          .maybeSingle();
+
+        if (deleteError) throw new Error(deleteError.message);
+        if (!deletedItem) throw new Error('O conteúdo não foi excluído. Verifique se você ainda tem permissão para removê-lo.');
+        setFeedItems((current) => current.filter((feedItem) => feedItem.id !== item.id));
+
+        if (item.type === 'visualization') {
+          const paths = item.images.map((image) => image.image_path).filter(Boolean);
+          if (paths.length) {
+            const { error: storageError } = await supabase.storage.from('visualizations').remove(paths);
+            if (storageError) {
+              setActionError(`O conteúdo foi excluído, mas não foi possível remover os arquivos associados: ${storageError.message}`);
+            }
+          }
+        }
+      } else {
+        await onEditItem(item);
+      }
+    } catch (error) {
+      setActionError(error.message || `Não foi possível ${action === 'delete' ? 'excluir' : 'editar'} o conteúdo.`);
+    } finally {
+      setActionLoadingId(null);
     }
   };
   const filteredItems = feedItems.filter((item) => (
@@ -288,13 +332,18 @@ function Home({ games, onPlay, onPlayCreatedQuiz, onOpenVisualization }) {
               <ContentCard
                 key={item.id}
                 item={item}
+                userId={userId}
                 onOpen={openFeedItem}
+                onEdit={(feedItem) => manageFeedItem(feedItem, 'edit')}
+                onDelete={(feedItem) => manageFeedItem(feedItem, 'delete')}
                 loading={launchingQuizId === item.id}
+                actionLoading={actionLoadingId === item.id}
               />
             ))}
           </div>
         )}
         {launchError && <p className="created-quizzes-message created-quizzes-error" role="alert">{launchError}</p>}
+        {actionError && <p className="created-quizzes-message created-quizzes-error" role="alert">{actionError}</p>}
       </section>
       <footer className="app-footer"><span>MED/GAMES</span><span>Modelos baseados no projeto Z-Anatomy · Consulte a licença e os termos de atribuição.</span><span>2026</span></footer>
     </main>
@@ -361,6 +410,7 @@ export default function App() {
   const [settings, setSettings] = useState(null);
   const [selectedGame, setSelectedGame] = useState(initialRoute.game ?? games[0]);
   const [quizToEdit, setQuizToEdit] = useState(null);
+  const [externalLinkToEdit, setExternalLinkToEdit] = useState(null);
   const [selectedVisualizationId, setSelectedVisualizationId] = useState(initialRoute.visualizationId ?? null);
   const [pendingQuizSlug, setPendingQuizSlug] = useState(initialRoute.quizSlug ?? '');
   const routeSyncReady = useRef(false);
@@ -421,7 +471,8 @@ export default function App() {
       setQuizToEdit(null);
       setScreen('home');
     }
-    if (!authLoading && !user && ['create-content', 'create-external-link'].includes(screen)) {
+    if (!authLoading && !user && ['create-content', 'create-external-link', 'edit-external-link'].includes(screen)) {
+      setExternalLinkToEdit(null);
       setScreen('home');
     }
     if (!authLoading && !user && screen === 'create-visualization') {
@@ -453,6 +504,35 @@ export default function App() {
   const handleLoginSuccess = () => {
     setAuthError('');
     setScreen('home');
+  };
+
+  const editFeedItem = async (item) => {
+    if (!user || item.ownerId !== user.id) {
+      throw new Error('Você não tem permissão para editar este conteúdo.');
+    }
+
+    if (item.type === 'visualization') {
+      setSelectedVisualizationId(item.databaseId);
+      setScreen('edit-visualization');
+      return;
+    }
+
+    if (item.type === 'external_link') {
+      setExternalLinkToEdit(item);
+      setScreen('edit-external-link');
+      return;
+    }
+
+    const { data: quiz, error } = await supabase
+      .from('quizzes')
+      .select('*, quiz_questions(*, quiz_answers(*))')
+      .eq('id', item.databaseId)
+      .eq('owner_id', user.id)
+      .single();
+
+    if (error) throw new Error(`Não foi possível carregar o questionário para edição: ${error.message}`);
+    setQuizToEdit({ quiz });
+    setScreen('create-quiz');
   };
 
   const playCreatedQuiz = async (quiz, isCurrent = () => true) => {
@@ -630,8 +710,10 @@ export default function App() {
       {screen === 'home' && (
         <Home
           games={games}
+          userId={user?.id}
           onPlay={openSettings}
           onPlayCreatedQuiz={playCreatedQuiz}
+          onEditItem={editFeedItem}
           onOpenVisualization={(item) => {
             setSelectedVisualizationId(item.visualizationId);
             setScreen('visualization-viewer');
@@ -659,6 +741,7 @@ export default function App() {
         <CreateVisualizationScreen
           onBack={() => setScreen('create-content')}
           onSaved={goHome}
+          ownerId={user.id}
         />
       )}
       {screen === 'edit-visualization' && user && selectedVisualizationId && (
@@ -666,6 +749,7 @@ export default function App() {
           visualizationId={selectedVisualizationId}
           onBack={goHome}
           onSaved={goHome}
+          ownerId={user.id}
         />
       )}
       {screen === 'login' && !user && <LoginScreen onBack={goHome} onLoginSuccess={handleLoginSuccess} />}
@@ -684,6 +768,15 @@ export default function App() {
         <CreateExternalLinkScreen
           userId={user.id}
           onBack={() => setScreen('create-content')}
+          onSaved={goHome}
+        />
+      )}
+      {screen === 'edit-external-link' && user && externalLinkToEdit && (
+        <CreateExternalLinkScreen
+          key={externalLinkToEdit.databaseId}
+          userId={user.id}
+          externalLink={externalLinkToEdit}
+          onBack={goHome}
           onSaved={goHome}
         />
       )}

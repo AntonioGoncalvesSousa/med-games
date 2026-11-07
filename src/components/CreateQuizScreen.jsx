@@ -271,9 +271,12 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
       };
       const isEditingExistingQuiz = Boolean(quizToEdit?.quiz?.id);
       const quizRequest = isEditingExistingQuiz
-        ? supabase.from('quizzes').update(quizValues).eq('id', quizToEdit.quiz.id)
+        ? supabase.from('quizzes').update(quizValues)
+          .eq('id', quizToEdit.quiz.id)
+          .eq('owner_id', userData.user.id)
         : supabase.from('quizzes').insert({
             ...quizValues,
+            status: 'published',
             owner_id: userData.user.id,
             slug: `${toSlug(title || 'questionario')}-${crypto.randomUUID().slice(0, 8)}`,
           });

@@ -17,7 +17,7 @@ function getImageUrl(imagePath) {
   return supabase.storage.from('visualizations').getPublicUrl(imagePath).data.publicUrl;
 }
 
-export default function CreateVisualizationScreen({ onBack, onSaved, visualizationId = null }) {
+export default function CreateVisualizationScreen({ onBack, onSaved, visualizationId = null, ownerId = null }) {
   const isEditing = Boolean(visualizationId);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -63,6 +63,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
         .from('structure_visualizations')
         .select('id, title, description, structure_images(id, view_name, image_path, position, structure_pins(id, label, accepted_answers, x_position, y_position))')
         .eq('id', visualizationId)
+        .eq('owner_id', ownerId)
         .single();
 
       if (!isCurrent) return;
@@ -107,7 +108,7 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
     return () => {
       isCurrent = false;
     };
-  }, [visualizationId]);
+  }, [visualizationId, ownerId]);
 
   const updateView = (viewId, updates) => {
     setViews((currentViews) => currentViews.map((view) => (
@@ -266,12 +267,13 @@ export default function CreateVisualizationScreen({ onBack, onSaved, visualizati
         const { error: updateError } = await supabase
           .from('structure_visualizations')
           .update({ title: title.trim(), description: description.trim() || null })
-          .eq('id', visualizationId);
+          .eq('id', visualizationId)
+          .eq('owner_id', userData.user.id);
         if (updateError) throw new Error(`Não foi possível atualizar a visualização: ${updateError.message}`);
       } else {
         const { data: visualization, error: insertError } = await supabase
           .from('structure_visualizations')
-          .insert({ title: title.trim(), description: description.trim() || null })
+          .insert({ title: title.trim(), description: description.trim() || null, owner_id: userData.user.id })
           .select('id')
           .single();
         if (insertError) throw new Error(`Não foi possível salvar a visualização: ${insertError.message}`);

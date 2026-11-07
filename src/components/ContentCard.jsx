@@ -6,9 +6,24 @@ const contentTypes = {
   external_link: { label: 'Link Externo', icon: '↗', action: 'Abrir link' },
 };
 
-export default function ContentCard({ item, onOpen, loading = false }) {
+export default function ContentCard({
+  item,
+  userId,
+  onOpen,
+  onEdit,
+  onDelete,
+  loading = false,
+  actionLoading = false,
+}) {
   const contentType = contentTypes[item.type];
   if (!contentType) return null;
+  const canManage = Boolean(userId && item.ownerId === userId);
+
+  const handleAction = (event, action) => {
+    event.preventDefault();
+    event.stopPropagation();
+    action(item);
+  };
 
   const openItem = () => {
     if (loading) return;
@@ -36,6 +51,7 @@ export default function ContentCard({ item, onOpen, loading = false }) {
         aria-disabled={loading}
         onClick={openItem}
         onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
           if (event.key !== 'Enter' && event.key !== ' ') return;
           event.preventDefault();
           openItem();
@@ -51,6 +67,12 @@ export default function ContentCard({ item, onOpen, loading = false }) {
         ) : (
           <div className="visualization-card-image visualization-card-placeholder" aria-hidden="true">
             <span>MED/GAMES</span>
+          </div>
+        )}
+        {canManage && (
+          <div className="content-card-actions visualization-content-actions">
+            <button type="button" onClick={(event) => handleAction(event, onEdit)} aria-label={`Editar ${item.title}`} disabled={actionLoading}>✎</button>
+            <button type="button" onClick={(event) => handleAction(event, onDelete)} aria-label={`Excluir ${item.title}`} disabled={actionLoading}>×</button>
           </div>
         )}
         <div className="visualization-card-copy">
@@ -72,6 +94,7 @@ export default function ContentCard({ item, onOpen, loading = false }) {
       aria-disabled={loading}
       onClick={openItem}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         openItem();
@@ -82,6 +105,12 @@ export default function ContentCard({ item, onOpen, loading = false }) {
         <span className={`content-type-badge content-type-${item.type}`}>
           {contentType.label}
         </span>
+        {canManage && (
+          <div className="content-card-actions">
+            <button type="button" onClick={(event) => handleAction(event, onEdit)} aria-label={`Editar ${item.title}`} disabled={actionLoading}>✎</button>
+            <button type="button" onClick={(event) => handleAction(event, onDelete)} aria-label={`Excluir ${item.title}`} disabled={actionLoading}>×</button>
+          </div>
+        )}
       </div>
       <div className="feed-card-copy">
         <h3 className="feed-card-title">

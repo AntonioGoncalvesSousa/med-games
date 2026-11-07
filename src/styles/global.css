@@ -61,7 +61,7 @@ h1 em, h2 em { font-family: 'Playfair Display', serif; font-weight: 600; letter-
 .created-quizzes-message { margin: 0; padding: 18px 20px; border: 1px solid var(--line); color: var(--muted); background: var(--cream); font-size: 13px; line-height: 1.6; }
 .created-quizzes-error { border-left: 2px solid var(--coral); color: #ffb39e; }
 .visualizations-page { max-width: 1236px; min-height: calc(100vh - 76px); margin: 0 auto; padding: 64px 42px 80px; }
-.visualization-card { overflow: hidden; border: 1px solid var(--line); background: var(--cream); }
+.visualization-card { position: relative; overflow: hidden; border: 1px solid var(--line); background: var(--cream); }
 .visualization-card-image { display: block; width: 100%; height: 220px; object-fit: cover; background: #173b57; }
 .visualization-card-placeholder { display: grid; place-items: center; color: var(--teal); font: 500 10px 'DM Mono', monospace; letter-spacing: .12em; }
 .visualization-card-copy { padding: 20px 22px 22px; }
@@ -325,6 +325,12 @@ body { background: #0d1b2a; }
 .content-type-external_link { border-color: rgba(145, 166, 184, .55); color: var(--muted); }
 .external-link-icon { flex: 0 0 16px; width: 16px; height: 16px; color: var(--teal); }
 .feed-card[aria-disabled="true"] { cursor: wait; }
+.content-card-actions { display: flex; align-items: center; gap: 6px; }
+.content-card-actions button { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; background: rgba(13, 27, 42, .88); color: var(--teal); font-size: 15px; line-height: 1; transition: background .2s, color .2s, border-color .2s; }
+.content-card-actions button:hover:not(:disabled) { border-color: var(--coral); background: var(--coral); color: #fff; }
+.content-card-actions button:disabled { cursor: wait; opacity: .6; }
+.visualization-content-actions { position: absolute; z-index: 1; top: 12px; right: 12px; }
+.visualization-content-actions button { width: 34px; height: 34px; border-color: rgba(255,255,255,.35); color: #fff; }
 @media (max-width: 800px) {
 	.feed-search { max-width: none; }
 	.feed-filters { gap: 7px; }
