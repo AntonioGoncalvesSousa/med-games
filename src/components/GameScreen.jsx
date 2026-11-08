@@ -61,7 +61,12 @@ export default function GameScreen({ game, onExit, onFinish }) {
       </div>
       <div className="progress-track"><span style={{ width: `${(completed / total) * 100}%` }} /></div>
       <div className="game-layout">
-        <section className="viewer-column"><AnatomyViewer structure={current} /></section>
+        <section className="viewer-column">
+          <AnatomyViewer
+            structure={current}
+            defaultTransparentMode={state.modelFile === 'muscles.glb'}
+          />
+        </section>
         <section className="answer-column">
           <p className="eyebrow">Identificação anatômica</p>
           <h1>Qual é este <em>{promptNoun}?</em></h1>

@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { anatomyStructures, muscleStructures } from '../data/anatomyData';
 
 const createAnswer = () => ({ id: crypto.randomUUID(), acceptedAnswers: '' });
+const structures3D = [...anatomyStructures, ...muscleStructures];
 
 const createQuestion = (type = 'image_identification') => ({
   id: crypto.randomUUID(),
   type,
   prompt: '',
+  structureId: '',
   imageFile: null,
   imagePreview: '',
   imagePath: '',
@@ -38,6 +41,7 @@ function questionFromQuiz(quizToEdit) {
         id: savedQuestion.id ?? crypto.randomUUID(),
         type: savedQuestion.type ?? 'image_identification',
         prompt: savedQuestion.prompt ?? '',
+        structureId: savedQuestion.type === '3d_model_identification' ? savedQuestion.prompt ?? '' : '',
         imageFile: null,
         imagePreview: savedQuestion.image_path ?? '',
         imagePath: savedQuestion.image_path ?? '',
@@ -71,6 +75,8 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
   const [title, setTitle] = useState(quizToEdit?.quiz?.title ?? '');
   const [description, setDescription] = useState(quizToEdit?.quiz?.description ?? '');
   const [questions, setQuestions] = useState(() => questionFromQuiz(quizToEdit));
+  const [searchTerm, setSearchTerm] = useState({});
+  const [isDropdownOpen, setIsDropdownOpen] = useState({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -79,6 +85,18 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
     setQuestions((current) => current.map((question) => (
       question.id === questionId ? { ...question, [field]: value } : question
     )));
+  };
+
+  const updateStructureSearch = (questionId, value) => {
+    setSearchTerm((current) => ({ ...current, [questionId]: value }));
+    updateQuestion(questionId, 'structureId', '');
+    setIsDropdownOpen((current) => ({ ...current, [questionId]: true }));
+  };
+
+  const selectStructure = (questionId, structure) => {
+    updateQuestion(questionId, 'structureId', structure.id);
+    setSearchTerm((current) => ({ ...current, [questionId]: structure.nome }));
+    setIsDropdownOpen((current) => ({ ...current, [questionId]: false }));
   };
 
   const updateQuestionOption = (questionId, optionIndex, value) => {
@@ -195,6 +213,24 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
       for (const [questionIndex, question] of questions.entries()) {
         const promptValue = (question.prompt || 'Identifique essa estrutura').trim();
         const imageAltValue = (question.imageAlt || 'Imagem do questionário').trim() || 'Imagem do questionário';
+
+        if (question.type === '3d_model_identification') {
+          const structure = structures3D.find((item) => item.id === question.structureId);
+          if (!structure) {
+            throw new Error(`Selecione uma estrutura para a pergunta ${questionIndex + 1}.`);
+          }
+
+          preparedQuestions.push({
+            questionIndex,
+            type: question.type,
+            prompt: structure.id,
+            imagePath: null,
+            imageAlt: null,
+            options: null,
+            answerValues: [[structure.nome, ...(structure.aliases ?? [])].join(', ')],
+          });
+          continue;
+        }
 
         if (question.type === 'image_identification' && !question.imageFile && !question.imagePath) {
           throw new Error(`Selecione uma imagem para a pergunta ${questionIndex + 1}.`);
@@ -431,21 +467,118 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
                       onChange={(event) => updateQuestion(question.id, 'type', event.target.value)}
                     >
                       <option value="image_identification">Identificação por imagem</option>
+                      <option value="3d_model_identification">Identificação 3D</option>
                       <option value="open_text">Resposta aberta</option>
                       <option value="multiple_choice">Múltipla escolha</option>
                     </select>
                   </label>
-                  <label className="quiz-field quiz-field-wide">
-                    <span>Pergunta</span>
-                    <textarea
-                      value={question.prompt}
-                      onChange={(event) => updateQuestion(question.id, 'prompt', event.target.value)}
-                      rows={3}
-                      maxLength={1000}
-                      placeholder={question.type === 'multiple_choice' ? 'Ex.: Qual estrutura é esta?' : 'Identifique essa estrutura'}
-                    />
-                  </label>
+                  {question.type !== '3d_model_identification' && (
+                    <label className="quiz-field quiz-field-wide">
+                      <span>Pergunta</span>
+                      <textarea
+                        value={question.prompt}
+                        onChange={(event) => updateQuestion(question.id, 'prompt', event.target.value)}
+                        rows={3}
+                        maxLength={1000}
+                        placeholder={question.type === 'multiple_choice' ? 'Ex.: Qual estrutura é esta?' : 'Identifique essa estrutura'}
+                      />
+                    </label>
+                  )}
                 </div>
+
+                {question.type === '3d_model_identification' && (() => {
+                  const selectedStructure = structures3D.find((structure) => structure.id === question.structureId);
+                  const query = searchTerm[question.id] ?? selectedStructure?.nome ?? '';
+                  const normalizedQuery = query.toLocaleLowerCase();
+                  const filteredBones = anatomyStructures.filter((structure) => (
+                    structure.nome.toLocaleLowerCase().includes(normalizedQuery)
+                  ));
+                  const filteredMuscles = muscleStructures.filter((structure) => (
+                    structure.nome.toLocaleLowerCase().includes(normalizedQuery)
+                  ));
+
+                  return (
+                    <div
+                      className="quiz-field quiz-field-wide structure-search-field"
+                      onBlur={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget)) {
+                          setIsDropdownOpen((current) => ({ ...current, [question.id]: false }));
+                        }
+                      }}
+                    >
+                      <span>Estrutura anatômica</span>
+                      <div className="structure-search-control">
+                        <input
+                          type="text"
+                          value={query}
+                          onChange={(event) => updateStructureSearch(question.id, event.target.value)}
+                          onFocus={() => setIsDropdownOpen((current) => ({ ...current, [question.id]: true }))}
+                          placeholder="Pesquise o nome do músculo ou osso..."
+                          role="combobox"
+                          aria-autocomplete="list"
+                          aria-expanded={Boolean(isDropdownOpen[question.id])}
+                          required
+                        />
+                        {(query || question.structureId) && (
+                          <button
+                            type="button"
+                            className="structure-search-clear"
+                            aria-label="Limpar estrutura selecionada"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setSearchTerm((current) => ({ ...current, [question.id]: '' }));
+                              updateQuestion(question.id, 'structureId', '');
+                              setIsDropdownOpen((current) => ({ ...current, [question.id]: true }));
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
+                        {isDropdownOpen[question.id] && (
+                          <div className="structure-search-results" role="listbox">
+                            {filteredBones.length > 0 && (
+                              <div className="structure-search-group">
+                                <span className="structure-search-group-title">Ossos</span>
+                                {filteredBones.map((structure) => (
+                                  <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={question.structureId === structure.id}
+                                    key={structure.id}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => selectStructure(question.id, structure)}
+                                  >
+                                    {structure.nome}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {filteredMuscles.length > 0 && (
+                              <div className="structure-search-group">
+                                <span className="structure-search-group-title">Músculos</span>
+                                {filteredMuscles.map((structure) => (
+                                  <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={question.structureId === structure.id}
+                                    key={structure.id}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => selectStructure(question.id, structure)}
+                                  >
+                                    {structure.nome}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {!filteredBones.length && !filteredMuscles.length && (
+                              <p className="structure-search-empty">Nenhuma estrutura encontrada.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {question.type === 'image_identification' && (
                   <div className="question-media-grid">
@@ -496,7 +629,7 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
                   </div>
                 )}
 
-                {question.type !== 'multiple_choice' && (
+                {question.type !== 'multiple_choice' && question.type !== '3d_model_identification' && (
                   <>
                     <div className="quiz-answer-editor">
                       {question.answers.map((answer, answerIndex) => (

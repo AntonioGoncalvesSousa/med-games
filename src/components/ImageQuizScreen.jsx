@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { normalizeAnswer } from '../utils/normalizeAnswer';
+import { anatomyStructures, muscleStructures } from '../data/anatomyData';
 import AnatomyViewer from './AnatomyViewer';
 
 const buildEmptyMultiState = (answers = []) => Object.fromEntries(
@@ -24,8 +25,19 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
   const isMultiAnswerQuestion = current?.type === 'multiple';
   const isMultipleChoiceQuestion = current?.type === 'multiple_choice' || current?.type === 'multiple';
   const isModelQuestion = current?.type === 'model';
+  const is3DIdentificationQuestion = current?.type === '3d_model_identification';
+  const identifiedBone = is3DIdentificationQuestion
+    ? anatomyStructures.find((structure) => structure.id === current.prompt)
+    : null;
+  const identifiedMuscle = is3DIdentificationQuestion
+    ? muscleStructures.find((structure) => structure.id === current.prompt)
+    : null;
+  const identifiedStructure = identifiedBone || identifiedMuscle;
+  const identifiedModelFile = identifiedBone ? 'skeleton.glb' : 'muscles.glb';
   const isLastQuestion = currentIndex === (game?.customQuiz?.length || 1) - 1;
-  const answerPrompt = current?.isCreatedQuiz
+  const answerPrompt = is3DIdentificationQuestion
+    ? 'Identifique a estrutura destacada no modelo 3D.'
+    : current?.isCreatedQuiz
     ? current.question
     : isModelQuestion
     ? current.question
@@ -176,7 +188,18 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
       <div className={`game-layout ${current?.type === 'open_text' || current?.type === 'multiple_choice' ? 'single-column-quiz' : ''}`}>
         {current?.type !== 'open_text' && current?.type !== 'multiple_choice' && (
           <section className="viewer-column">
-            {isModelQuestion ? <AnatomyViewer structure={current} modelFile={current.modelFile} /> : <div className="viewer-shell image-quiz-shell"><img src={current.image} alt={current.question} className="image-quiz-image" /></div>}
+            {is3DIdentificationQuestion
+              ? identifiedStructure
+                ? <AnatomyViewer
+                    key={identifiedModelFile}
+                    structure={identifiedStructure}
+                    modelFile={identifiedModelFile}
+                    defaultTransparentMode={Boolean(identifiedMuscle)}
+                  />
+                : <div className="viewer-shell image-quiz-shell">A estrutura desta pergunta não foi encontrada.</div>
+              : isModelQuestion
+                ? <AnatomyViewer structure={current} modelFile={current.modelFile} />
+                : <div className="viewer-shell image-quiz-shell"><img src={current.image} alt={current.question} className="image-quiz-image" /></div>}
           </section>
         )}
 

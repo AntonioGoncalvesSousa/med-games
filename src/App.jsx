@@ -575,6 +575,7 @@ export default function App() {
           image: question.image_path,
           imageAlt: question.image_alt,
           question: question.prompt,
+          prompt: question.prompt,
           type: 'multiple_choice',
           options: canonicalOptions.slice(0, 4),
           answer: acceptedAnswers[0]?.[0] ?? canonicalOptions[0] ?? '',
@@ -588,6 +589,7 @@ export default function App() {
         image: question.image_path,
         imageAlt: question.image_alt,
         question: question.prompt,
+        prompt: question.prompt,
         type,
         isCreatedQuiz: true,
         ...(type === 'image_identification'

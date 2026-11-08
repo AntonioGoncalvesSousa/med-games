@@ -221,19 +221,6 @@ function addTranslatedModelLabels(root, scene, labels) {
   });
 }
 
-function captureOriginalMaterials(root) {
-  root.traverse((object) => {
-    if (!object.isMesh) return;
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
-    object.userData.originalMaterialState = materials.map((material) => ({
-      name: material.name,
-      color: material.color?.clone(),
-      emissive: material.emissive?.clone(),
-      emissiveIntensity: material.emissiveIntensity,
-    }));
-  });
-}
-
 const muscleMaterials = new Set([
   'Internal rotator',
   'External rotation',
@@ -267,7 +254,7 @@ function hideNonMuscleMeshes(root) {
   });
 }
 
-function applyHighlight(model, structure, controls, camera, transparentMode = false, hideTarget = false, keyColors = false, shouldCenter = true, contextOpacity = 1) {
+function applyHighlight(model, structure, controls, camera, transparentMode = false, hideTarget = false, isKeyColorsDark = false, shouldCenter = true, contextOpacity = 1) {
   clearHighlights(model.root);
   const highlightedMeshes = findStructure(model.root, structure?.meshNames);
   const highlightedSet = new Set(highlightedMeshes);
@@ -279,26 +266,31 @@ function applyHighlight(model, structure, controls, camera, transparentMode = fa
     if (!object.isMesh) return;
     if (object.userData.isModelLabel) return;
     const highlighted = highlightedSet.has(object);
-    if (object.userData.isMuscleMesh) object.visible = !(hideTarget && highlighted);
+    if (object.userData.isMuscleMesh) object.visible = !hideTarget || highlighted;
     const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
-    const originalMaterials = object.userData.originalMaterialState || [];
-    const materials = sourceMaterials.map((source, index) => {
-      const original = originalMaterials[index];
+    const materials = sourceMaterials.map((source) => {
       const material = source.clone();
+      material.map = null;
+      material.vertexColors = false;
+      if ('metalness' in material) material.metalness = 0;
+      if ('roughness' in material) material.roughness = 0.8;
       if (source.name === 'Text') {
         material.transparent = true;
         material.opacity = 0;
         material.depthWrite = false;
         return material;
       }
-      if (highlighted) material.color?.set(0xe66c4b);
-      else if (keyColors) material.color?.set(0xffffff);
-      else material.color?.set(model.fallback ? 0xd7d2c7 : 0x9a9183);
-      if (highlighted) material.emissive?.set(0x7d2413);
-      else material.emissive?.set(0x000000);
-      if ('emissiveIntensity' in material) material.emissiveIntensity = highlighted ? 0.85 : 0;
+      if (highlighted) {
+        material.color?.setHex(0xd13838);
+        material.emissive?.setHex(0x3a0909);
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.5;
+      } else {
+        material.color?.setHex(isKeyColorsDark ? 0x81758f : 0xffffff);
+        material.emissive?.set(0x000000);
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0;
+      }
       material.transparent = (canUseTransparentMode || canDimContext) && !highlighted;
-      material.opacity = highlighted ? 1 : canUseTransparentMode ? 0.2 : contextOpacity;
+      material.opacity = highlighted ? 1 : canUseTransparentMode ? 0.5 : contextOpacity;
       material.depthWrite = !(canUseTransparentMode || canDimContext) || highlighted;
       return material;
     });
@@ -351,21 +343,29 @@ function zoomCamera(camera, controls, direction) {
   controls.update();
 }
 
-export default function AnatomyViewer({ structure, modelFile = structure?.modelFile || 'skeleton.glb', contextOpacity = 1, labels = [] }) {
+export default function AnatomyViewer({
+  structure,
+  modelFile = structure?.modelFile || 'skeleton.glb',
+  contextOpacity = 1,
+  labels = [],
+  defaultTransparentMode = false,
+}) {
   const mountRef = useRef(null);
   const modelRef = useRef(null);
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   const [modelState, setModelState] = useState('loading');
   const [loadProgress, setLoadProgress] = useState(0);
-  const [transparentMode, setTransparentMode] = useState(false);
+  const [transparentMode, setTransparentMode] = useState(defaultTransparentMode);
   const [hideTarget, setHideTarget] = useState(false);
-  const [keyColorsEnabled, setKeyColorsEnabled] = useState(false);
-  const previousKeyColorsRef = useRef(false);
+  const [isKeyColorsDark, setIsKeyColorsDark] = useState(false);
+  const previousStructureRef = useRef(structure);
+  const previousModelStateRef = useRef(modelState);
 
   useEffect(() => {
     setHideTarget(false);
-  }, [structure]);
+    if (defaultTransparentMode) setTransparentMode(true);
+  }, [structure, defaultTransparentMode]);
 
   const recenter = () => {
     const model = modelRef.current;
@@ -388,13 +388,14 @@ export default function AnatomyViewer({ structure, modelFile = structure?.modelF
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 700 ? 1.5 : 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.NoToneMapping;
     mount.appendChild(renderer.domElement);
 
-    scene.add(new THREE.HemisphereLight(0xfff8e8, 0x1b2b2a, 2.1));
-    const keyLight = new THREE.DirectionalLight(0xffe9ca, 3.2);
+    scene.add(new THREE.HemisphereLight(0xfff8e8, 0x1b2b2a, 1));
+    const keyLight = new THREE.DirectionalLight(0xffe9ca, 1.5);
     keyLight.position.set(4, 6, 7);
     scene.add(keyLight);
-    const rimLight = new THREE.DirectionalLight(0x7cc7c6, 1.5);
+    const rimLight = new THREE.DirectionalLight(0x7cc7c6, 0.5);
     rimLight.position.set(-5, 2, -3);
     scene.add(rimLight);
 
@@ -429,7 +430,6 @@ export default function AnatomyViewer({ structure, modelFile = structure?.modelF
     loader.load(`${import.meta.env.BASE_URL}models/z-anatomy/${modelFile}`, (gltf) => {
       hideModelLabels(gltf.scene);
       if (modelFile === 'muscles.glb') hideNonMuscleMeshes(gltf.scene);
-      captureOriginalMaterials(gltf.scene);
       modelRef.current = { root: gltf.scene, fallback: false };
       scene.add(gltf.scene);
       addTranslatedModelLabels(gltf.scene, scene, labels);
@@ -470,18 +470,20 @@ export default function AnatomyViewer({ structure, modelFile = structure?.modelF
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (camera && controls) {
-      const shouldCenter = previousKeyColorsRef.current === keyColorsEnabled;
-      applyHighlight(model, structure, controls, camera, transparentMode, hideTarget, keyColorsEnabled, shouldCenter, contextOpacity);
-      previousKeyColorsRef.current = keyColorsEnabled;
+      const shouldCenter = previousStructureRef.current !== structure
+        || previousModelStateRef.current !== modelState;
+      applyHighlight(model, structure, controls, camera, transparentMode, hideTarget, isKeyColorsDark, shouldCenter, contextOpacity);
+      previousStructureRef.current = structure;
+      previousModelStateRef.current = modelState;
     }
-  }, [structure, modelState, transparentMode, hideTarget, keyColorsEnabled, contextOpacity]);
+  }, [structure, modelState, transparentMode, hideTarget, isKeyColorsDark, contextOpacity]);
 
   return (
     <div className="viewer-shell">
       <div ref={mountRef} className="anatomy-canvas" aria-label="Visualizador 3D anatômico" />
       <div className="viewer-badge"><span className="live-dot" /> {modelState === 'ready' ? 'Modelo Z-Anatomy' : modelState === 'fallback' ? 'Pré-visualização 3D' : modelState === 'error' ? 'Falha ao carregar modelo' : modelState === 'unavailable' ? 'WebGL indisponível' : `Carregando modelo${loadProgress ? ` · ${loadProgress}%` : ''}`}</div>
       {modelState === 'ready' && <div className="highlight-badge"><span /> estrutura em destaque</div>}
-      {modelState === 'ready' && <div className="viewer-controls"><button className="zoom-button" onClick={() => zoomCamera(cameraRef.current, controlsRef.current, -1)} type="button" aria-label="Aproximar modelo">+</button><button className="zoom-button" onClick={() => zoomCamera(cameraRef.current, controlsRef.current, 1)} type="button" aria-label="Afastar modelo">−</button><button className="recenter-button" onClick={recenter} type="button"><span>⌖</span> Centralizar estrutura</button><button className={`transparency-button ${keyColorsEnabled ? 'active' : ''}`} onClick={() => setKeyColorsEnabled((current) => !current)} type="button">{keyColorsEnabled ? 'Cores normais' : 'Cores chave'}</button>{modelFile === 'muscles.glb' && <><button className={`transparency-button ${transparentMode ? 'active' : ''}`} onClick={() => setTransparentMode((current) => !current)} type="button">{transparentMode ? 'Opacidade normal' : 'Ver Musculo'}</button><button className={`transparency-button ${hideTarget ? 'active' : ''}`} onClick={() => setHideTarget((current) => !current)} type="button">{hideTarget ? 'Mostrar músculo' : 'Ocultar músculo'}</button></>}</div>}
+      {modelState === 'ready' && <div className="viewer-controls"><button className="zoom-button" onClick={() => zoomCamera(cameraRef.current, controlsRef.current, -1)} type="button" aria-label="Aproximar modelo">+</button><button className="zoom-button" onClick={() => zoomCamera(cameraRef.current, controlsRef.current, 1)} type="button" aria-label="Afastar modelo">−</button><button className="recenter-button" onClick={recenter} type="button"><span>⌖</span> Centralizar estrutura</button><button className={`transparency-button ${isKeyColorsDark ? 'active' : ''}`} onClick={() => setIsKeyColorsDark((current) => !current)} type="button">{isKeyColorsDark ? 'Modelo branco' : 'Modelo cinza-roxo'}</button>{modelFile === 'muscles.glb' && <><button className={`transparency-button ${transparentMode ? 'active' : ''}`} onClick={() => setTransparentMode((current) => !current)} type="button">{transparentMode ? 'Desativar Opacidade' : 'Ativar Opacidade'}</button><button className={`transparency-button ${hideTarget ? 'active' : ''}`} onClick={() => setHideTarget((current) => !current)} type="button">{hideTarget ? 'Mostrar músculo' : 'Ocultar outros músculos'}</button></>}</div>}
       {modelState === 'loading' && <div className="viewer-note loading-note">O modelo 3D está carregando{loadProgress ? ` · ${loadProgress}%` : ''}.</div>}
       {modelState === 'error' && <div className="viewer-note">Não foi possível carregar o modelo 3D. Verifique sua conexão e recarregue a página.</div>}
       {modelState === 'unavailable' && <div className="viewer-note">Este navegador não disponibilizou WebGL para esta sessão. Abra a aplicação em um navegador com aceleração 3D ativa.</div>}
