@@ -10,6 +10,7 @@ const initialState = {
   correct: 0,
   incorrect: 0,
   skipped: 0,
+  shownAnswers: 0,
   history: [],
   feedback: null,
   revealed: false,
@@ -34,7 +35,15 @@ function reducer(state, action) {
       };
     }
     case 'REVEAL':
-      return state.feedback ? state : { ...state, revealed: true };
+      if (!current || state.feedback) return state;
+      return {
+        ...state,
+        feedback: { type: 'revealed', answer: current.structure.nome },
+        revealed: true,
+        shownAnswers: state.shownAnswers + 1,
+        queue: state.queue.map((item, index) => index === state.currentIndex ? { ...item, status: 'revealed' } : item),
+        history: [...state.history, { structure: current.structure, result: 'revealed', answer: current.structure.nome }],
+      };
     case 'UNKNOWN':
       if (!current || state.feedback) return state;
       return {
@@ -43,16 +52,6 @@ function reducer(state, action) {
         revealed: true,
         incorrect: state.incorrect + 1,
         queue: state.queue.map((item, index) => index === state.currentIndex ? { ...item, status: 'incorrect' } : item),
-      };
-    case 'MARK_FLASHCARD':
-      if (!current || state.feedback) return state;
-      return {
-        ...state,
-        feedback: { type: action.known ? 'correct' : 'incorrect', answer: '' },
-        revealed: true,
-        correct: state.correct + (action.known ? 1 : 0),
-        incorrect: state.incorrect + (action.known ? 0 : 1),
-        queue: state.queue.map((item, index) => index === state.currentIndex ? { ...item, status: action.known ? 'correct' : 'incorrect' } : item),
       };
     case 'SKIP': {
       if (!current || !state.allowSkip || state.feedback) return state;
@@ -76,10 +75,10 @@ export function useAnatomyGame() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const current = state.queue[state.currentIndex]?.structure || null;
   const total = state.queue.length;
-  const completed = state.queue.filter((item) => item.status === 'correct' || item.status === 'incorrect').length;
+  const completed = state.queue.filter((item) => ['correct', 'incorrect', 'revealed'].includes(item.status)).length;
   const finished = !state.started && total > 0;
   const percentage = useMemo(() => getScorePercentage(state.correct, total), [state.correct, total]);
 
   const start = useCallback((settings, structures) => dispatch({ type: 'START', settings, structures }), []);
-  return { state, current, total, completed, finished, percentage, start, answer: (value) => dispatch({ type: value.trim() ? 'ANSWER' : 'UNKNOWN', answer: value }), reveal: () => dispatch({ type: 'REVEAL' }), markUnknown: () => dispatch({ type: 'UNKNOWN' }), markFlashcard: (known) => dispatch({ type: 'MARK_FLASHCARD', known }), skip: () => dispatch({ type: 'SKIP' }), next: () => dispatch({ type: 'NEXT' }), reset: () => dispatch({ type: 'RESTART' }) };
+  return { state, current, total, completed, finished, percentage, start, answer: (value) => dispatch({ type: value.trim() ? 'ANSWER' : 'UNKNOWN', answer: value }), reveal: () => dispatch({ type: 'REVEAL' }), markUnknown: () => dispatch({ type: 'UNKNOWN' }), skip: () => dispatch({ type: 'SKIP' }), next: () => dispatch({ type: 'NEXT' }), reset: () => dispatch({ type: 'RESTART' }) };
 }

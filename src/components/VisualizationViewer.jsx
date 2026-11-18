@@ -33,8 +33,10 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
   const [testAnswer, setTestAnswer] = useState('');
   const [testFeedback, setTestFeedback] = useState(null);
   const [testResult, setTestResult] = useState(null);
-  const [testScore, setTestScore] = useState({ correct: 0, incorrect: 0 });
+  const [testScore, setTestScore] = useState({ correct: 0, incorrect: 0, shownAnswers: 0 });
+  const testInputRef = useRef(null);
   const nextButtonRef = useRef(null);
+  const nextTestPinRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -89,6 +91,23 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
     if (testFeedback) nextButtonRef.current?.focus();
   }, [testFeedback]);
 
+  useEffect(() => {
+    if (isTestMode && !testFeedback) testInputRef.current?.focus();
+  }, [isTestMode, testIndex, testFeedback]);
+
+  useEffect(() => {
+    if (!isTestMode || !testFeedback) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Enter' || event.repeat) return;
+      event.preventDefault();
+      nextTestPinRef.current?.();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isTestMode, testFeedback]);
+
   if (loading) {
     return (
       <main className="visualizations-page page-enter">
@@ -113,6 +132,7 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
       state: {
         correct: testResult.correct,
         incorrect: testResult.incorrect,
+        shownAnswers: testResult.shownAnswers,
         skipped: 0,
         queue: Array.from({ length: testResult.total }, (_, index) => ({ index })),
       },
@@ -146,7 +166,7 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
     setTestAnswer('');
     setTestFeedback(null);
     setTestResult(null);
-    setTestScore({ correct: 0, incorrect: 0 });
+    setTestScore({ correct: 0, incorrect: 0, shownAnswers: 0 });
     setActivePinId(null);
     setIsTestMode(true);
   };
@@ -162,8 +182,18 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
     const isCorrect = acceptedAnswers.includes(normalizeAnswer(testAnswer));
     setTestFeedback(isCorrect ? 'correct' : 'incorrect');
     setTestScore((score) => ({
+      ...score,
       correct: score.correct + (isCorrect ? 1 : 0),
       incorrect: score.incorrect + (isCorrect ? 0 : 1),
+    }));
+  };
+
+  const revealTestAnswer = () => {
+    if (!currentTestPin || testFeedback) return;
+    setTestFeedback('revealed');
+    setTestScore((score) => ({
+      ...score,
+      shownAnswers: score.shownAnswers + 1,
     }));
   };
 
@@ -173,6 +203,7 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
       setTestResult({
         correct: testScore.correct,
         incorrect: testScore.incorrect,
+        shownAnswers: testScore.shownAnswers,
         total: testPins.length,
       });
       return;
@@ -181,6 +212,7 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
     setTestAnswer('');
     setTestFeedback(null);
   };
+  nextTestPinRef.current = nextTestPin;
 
   return (
     <main className="visualizations-page page-enter">
@@ -270,6 +302,7 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
             <label htmlFor="visualization-test-answer">Qual é o nome desta estrutura?</label>
             <input
               id="visualization-test-answer"
+              ref={testInputRef}
               value={testAnswer}
               onChange={(event) => setTestAnswer(event.target.value)}
               placeholder="Digite o nome da estrutura"
@@ -280,19 +313,22 @@ export default function VisualizationViewer({ visualizationId, onBack }) {
             />
             {testFeedback && (
               <div className={`feedback ${testFeedback}`} role="status">
-                <span>{testFeedback === 'correct' ? '✓' : '×'}</span>
+                <span>{testFeedback === 'correct' ? '✓' : testFeedback === 'revealed' ? '↗' : '×'}</span>
                 <div>
-                  <strong>{testFeedback === 'correct' ? 'Acertou!' : 'Errou.'}</strong>
-                  {testFeedback === 'incorrect' && <small>Resposta correta: {currentTestPin.label}</small>}
+                  <strong>{testFeedback === 'correct' ? 'Acertou!' : testFeedback === 'revealed' ? 'Resposta revelada' : 'Errou.'}</strong>
+                  {testFeedback !== 'correct' && <small>Resposta correta: {currentTestPin.label}</small>}
                 </div>
               </div>
             )}
             <div className="visualization-test-actions">
               {!testFeedback ? (
-                <button type="submit" className="primary-button">Responder <span>→</span></button>
+                <>
+                  <button type="submit" className="primary-button">Responder <span>→</span></button>
+                  <button type="button" className="text-button muted answer-reveal-toggle" onClick={revealTestAnswer}>Mostrar resposta</button>
+                </>
               ) : (
                 <button ref={nextButtonRef} type="button" className="primary-button" onClick={nextTestPin}>
-                  {testIndex + 1 >= testPins.length ? 'Finalizar teste' : 'Próximo'} <span>→</span>
+                  {testIndex + 1 >= testPins.length ? 'Finalizar teste' : 'Próxima questão'} <span>→</span>
                 </button>
               )}
             </div>

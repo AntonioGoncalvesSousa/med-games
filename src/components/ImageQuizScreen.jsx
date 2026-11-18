@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeAnswer } from '../utils/normalizeAnswer';
 import { anatomyStructures, muscleStructures } from '../data/anatomyData';
 import AnatomyViewer from './AnatomyViewer';
@@ -14,16 +14,17 @@ const buildEmptyMultiStatus = (answers = []) => Object.fromEntries(
 export default function ImageQuizScreen({ game, onBack, onFinish }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [input, setInput] = useState('');
+  const inputRef = useRef(null);
   const [selectedOption, setSelectedOption] = useState(null);
   const [multiInputs, setMultiInputs] = useState(() => buildEmptyMultiState(game?.customQuiz?.[0]?.answers || []));
   const [multiStatus, setMultiStatus] = useState(() => buildEmptyMultiStatus(game?.customQuiz?.[0]?.answers || []));
   const [feedback, setFeedback] = useState(null);
   const [answerError, setAnswerError] = useState('');
-  const [resultSummary, setResultSummary] = useState({ correct: 0, incorrect: 0 });
+  const [resultSummary, setResultSummary] = useState({ correct: 0, incorrect: 0, shownAnswers: 0 });
 
   const current = game?.customQuiz?.[currentIndex];
   const isMultiAnswerQuestion = current?.type === 'multiple';
-  const isMultipleChoiceQuestion = current?.type === 'multiple_choice' || current?.type === 'multiple';
+  const isMultipleChoiceQuestion = current?.type === 'multiple_choice';
   const isModelQuestion = current?.type === 'model';
   const is3DIdentificationQuestion = current?.type === '3d_model_identification';
   const identifiedBone = is3DIdentificationQuestion
@@ -50,6 +51,14 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
         : isMultiAnswerQuestion
           ? 'Identifique cada estrutura indicada na imagem.'
           : 'Observe a imagem e confie no que você sabe.';
+  const correctAnswer = is3DIdentificationQuestion
+    ? identifiedStructure?.nome || current?.answer || current?.prompt
+    : isMultiAnswerQuestion
+      ? current.answers.map((item, index) => {
+          const acceptedAnswers = item.acceptedAnswers?.length ? item.acceptedAnswers : [item.answer];
+          return `${item.label || `Estrutura ${index + 1}`}: ${acceptedAnswers.filter(Boolean).join(' / ')}`;
+        }).join(' • ')
+      : (current?.acceptedAnswers?.length ? current.acceptedAnswers : [current?.answer]).filter(Boolean).join(' / ');
   const progress = useMemo(() => {
     if (!game?.customQuiz?.length) return 0;
     return ((currentIndex + 1) / game.customQuiz.length) * 100;
@@ -66,23 +75,9 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
     setSelectedOption(null);
     setFeedback(null);
     setAnswerError('');
+    if (current.type !== 'multiple_choice') inputRef.current?.focus();
     return undefined;
-  }, [current?.id]);
-
-  useEffect(() => {
-    if (!feedback) return undefined;
-
-    const handleKeyDown = (event) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
-      handleNext();
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [feedback, isLastQuestion, currentIndex]);
-
-  if (!current) return null;
+  }, [currentIndex, current?.id]);
 
   const submitAnswer = (event) => {
     event.preventDefault();
@@ -109,6 +104,7 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
       setAnswerError('');
       setFeedback(isCorrect ? 'correct' : 'incorrect');
       setResultSummary((previous) => ({
+        ...previous,
         correct: previous.correct + (isCorrect ? 1 : 0),
         incorrect: previous.incorrect + (isCorrect ? 0 : 1),
       }));
@@ -129,6 +125,7 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
       );
       setFeedback(isCorrect ? 'correct' : 'incorrect');
       setResultSummary((previous) => ({
+        ...previous,
         correct: previous.correct + (isCorrect ? 1 : 0),
         incorrect: previous.incorrect + (isCorrect ? 0 : 1),
       }));
@@ -148,8 +145,19 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
     );
     setFeedback(isCorrect ? 'correct' : 'incorrect');
     setResultSummary((previous) => ({
+      ...previous,
       correct: previous.correct + (isCorrect ? 1 : 0),
       incorrect: previous.incorrect + (isCorrect ? 0 : 1),
+    }));
+  };
+
+  const revealAnswer = () => {
+    if (feedback) return;
+    setAnswerError('');
+    setFeedback('revealed');
+    setResultSummary((previous) => ({
+      ...previous,
+      shownAnswers: previous.shownAnswers + 1,
     }));
   };
 
@@ -166,8 +174,9 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
     }
 
     const finalSummary = {
-      correct: resultSummary.correct + (feedback === 'correct' ? 1 : 0),
-      incorrect: resultSummary.incorrect + (feedback === 'incorrect' ? 1 : 0),
+      correct: resultSummary.correct,
+      incorrect: resultSummary.incorrect,
+      shownAnswers: resultSummary.shownAnswers,
       total: game.customQuiz.length,
     };
 
@@ -176,6 +185,21 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
       percentage: Math.round((finalSummary.correct / finalSummary.total) * 100),
     });
   };
+
+  useEffect(() => {
+    if (!feedback) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Enter' || event.repeat) return;
+      event.preventDefault();
+      handleNext();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [feedback, handleNext]);
+
+  if (!current) return null;
 
   return (
     <main className="game-page page-enter">
@@ -215,7 +239,7 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
                   <button
                     key={`${current.id}-option-${index}`}
                     type="button"
-                    className={`multiple-choice-answer ${selectedOption === option ? 'selected' : ''} ${feedback ? (normalizeAnswer(option) === normalizeAnswer(current.answer) ? 'correct' : selectedOption === option ? 'incorrect' : '') : ''}`}
+                    className={`multiple-choice-answer ${selectedOption === option ? 'selected' : ''} ${feedback ? (normalizeAnswer(option) === normalizeAnswer(current.answer) ? 'correct' : selectedOption === option && feedback !== 'revealed' ? 'incorrect' : '') : ''}`}
                     onClick={() => {
                       if (feedback) return;
                       setSelectedOption(option);
@@ -232,6 +256,7 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
                 <label htmlFor="image-quiz-answer">Sua resposta</label>
                 <input
                   id="image-quiz-answer"
+                  ref={inputRef}
                   type="text"
                   value={input}
                   onChange={(event) => {
@@ -240,7 +265,6 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
                     if (answerError) setAnswerError('');
                   }}
                   placeholder={current?.type === 'open_text' ? 'Digite sua resposta' : 'Digite o nome da estrutura'}
-                  autoFocus
                   disabled={Boolean(feedback)}
                   aria-invalid={Boolean(answerError)}
                   aria-describedby={answerError ? 'image-answer-error' : undefined}
@@ -253,9 +277,10 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
                     <label htmlFor={`image-quiz-answer-${index + 1}`}>{item.label}</label>
                     <input
                       id={`image-quiz-answer-${index + 1}`}
+                      ref={index === 0 ? inputRef : undefined}
                       type="text"
                       value={multiInputs[index + 1]}
-                      className={feedback ? (multiStatus[index + 1] === 'correct' ? 'field-correct' : 'field-incorrect') : ''}
+                      className={feedback && feedback !== 'revealed' ? (multiStatus[index + 1] === 'correct' ? 'field-correct' : 'field-incorrect') : ''}
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setMultiInputs((previous) => ({ ...previous, [index + 1]: nextValue }));
@@ -263,7 +288,6 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
                         if (answerError) setAnswerError('');
                       }}
                       placeholder={item.label}
-                      autoFocus={index === 0}
                       disabled={Boolean(feedback)}
                       aria-invalid={Boolean(answerError)}
                       aria-describedby={answerError ? 'image-answer-error' : undefined}
@@ -276,17 +300,13 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
             {answerError && <small id="image-answer-error" className="answer-error" role="alert">{answerError}</small>}
 
             {feedback && (
-              <div className={`feedback ${feedback}`}>
-                <span>{feedback === 'correct' ? '✓' : '×'}</span>
+              <div className={`feedback ${feedback}`} role="status">
+                <span>{feedback === 'correct' ? '✓' : feedback === 'revealed' ? '↗' : '×'}</span>
                 <div>
-                  <strong>{feedback === 'correct' ? 'Correto!' : 'Resposta incorreta'}</strong>
-                  {feedback === 'incorrect' && (
+                  <strong>{feedback === 'correct' ? 'Correto!' : feedback === 'revealed' ? 'Resposta revelada' : 'Resposta incorreta'}</strong>
+                  {feedback !== 'correct' && (
                     <small>
-                      {isMultiAnswerQuestion
-                        ? `Respostas corretas: ${current.answers.map((item) => item.answer).join(' • ')}`
-                        : isMultipleChoiceQuestion
-                          ? `Resposta correta: ${current.answer}`
-                          : `Resposta: ${current.answer}`}
+                      {isMultiAnswerQuestion ? `Respostas corretas: ${correctAnswer}` : `Resposta correta: ${correctAnswer}`}
                     </small>
                   )}
                 </div>
@@ -303,6 +323,7 @@ export default function ImageQuizScreen({ game, onBack, onFinish }) {
               ) : (
                 <button type="button" className="primary-button" onClick={handleNext}>{isLastQuestion ? 'Finalizar' : 'Próxima questão'} <span>→</span></button>
               )}
+              {!feedback && <button type="button" className="text-button muted answer-reveal-toggle" onClick={revealAnswer}>Mostrar resposta</button>}
             </div>
           </form>
         </section>

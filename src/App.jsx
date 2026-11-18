@@ -680,8 +680,9 @@ export default function App() {
     state: {
       correct: imageQuizResult.correct,
       incorrect: imageQuizResult.incorrect,
+      shownAnswers: imageQuizResult.shownAnswers || 0,
       skipped: 0,
-      queue: Array.from({ length: imageQuizResult.total }, (_, index) => ({ index, status: index < imageQuizResult.correct ? 'correct' : 'incorrect' })),
+      queue: Array.from({ length: imageQuizResult.total }, (_, index) => ({ index, status: index < imageQuizResult.correct ? 'correct' : index < imageQuizResult.correct + imageQuizResult.incorrect ? 'incorrect' : 'revealed' })),
     },
     percentage: imageQuizResult.percentage,
   } : null;

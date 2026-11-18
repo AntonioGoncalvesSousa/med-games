@@ -266,7 +266,8 @@ function applyHighlight(model, structure, controls, camera, transparentMode = fa
     if (!object.isMesh) return;
     if (object.userData.isModelLabel) return;
     const highlighted = highlightedSet.has(object);
-    if (object.userData.isMuscleMesh) object.visible = !hideTarget || highlighted;
+    if (highlighted) object.visible = true;
+    else if (object.userData.isMuscleMesh) object.visible = !hideTarget;
     const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
     const materials = sourceMaterials.map((source) => {
       const material = source.clone();

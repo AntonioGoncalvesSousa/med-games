@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { anatomyStructures, muscleStructures } from '../data/anatomyData';
+import { normalizeAnswer } from '../utils/normalizeAnswer';
 
 const createAnswer = () => ({ id: crypto.randomUUID(), acceptedAnswers: '' });
 const structures3D = [...anatomyStructures, ...muscleStructures];
@@ -489,12 +490,16 @@ export default function CreateQuizScreen({ onBack, quizToEdit = null }) {
                 {question.type === '3d_model_identification' && (() => {
                   const selectedStructure = structures3D.find((structure) => structure.id === question.structureId);
                   const query = searchTerm[question.id] ?? selectedStructure?.nome ?? '';
-                  const normalizedQuery = query.toLocaleLowerCase();
+                  const normalizedQuery = normalizeAnswer(query);
+                  const matchesStructure = (structure) => (
+                    [structure.nome, ...(structure.aliases || [])]
+                      .some((name) => normalizeAnswer(name).includes(normalizedQuery))
+                  );
                   const filteredBones = anatomyStructures.filter((structure) => (
-                    structure.nome.toLocaleLowerCase().includes(normalizedQuery)
+                    matchesStructure(structure)
                   ));
                   const filteredMuscles = muscleStructures.filter((structure) => (
-                    structure.nome.toLocaleLowerCase().includes(normalizedQuery)
+                    matchesStructure(structure)
                   ));
 
                   return (
